@@ -1,0 +1,10 @@
+# Local tool settings
+.claude/
+
+# Python cache from serve.py
+__pycache__/
+
+# OS clutter
+.DS_Store
+Thumbs.db
+desktop.ini

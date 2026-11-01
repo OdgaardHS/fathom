@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fathom</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <!-- Menus are plain HTML on top of the canvas. src/ui/menus.js shows/hides them. -->
+    <div id="ui">
+      <section class="screen screen-clear" data-screen="title">
+        <div class="panel">
+          <p class="eyebrow">An expedition into the deep</p>
+          <h1 class="logo" data-game-title>Fathom</h1>
+          <p class="tagline">Something is waking at the bottom of the sea.</p>
+          <ul class="controls">
+            <li>Swim <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows</span></li>
+            <li>Attack <span>Automatic</span></li>
+            <li>Pause <span><kbd>Esc</kbd></span></li>
+            <li>Mute <span><kbd>M</kbd></span></li>
+          </ul>
+          <button class="btn primary" type="button" data-action="start">Begin the descent</button>
+          <p class="hint">or press <kbd>Enter</kbd></p>
+        </div>
+      </section>
+
+      <section class="screen screen-clear" data-screen="heroes" hidden>
+        <div class="panel hero-panel">
+          <h2>Choose your diver</h2>
+          <p class="hint">Each diver has a passive and a few talents of their own. You pick a weapon next.</p>
+          <div class="heroes" data-heroes></div>
+          <div class="actions">
+            <button class="btn" type="button" data-action="back">Back</button>
+          </div>
+          <p class="hint">Press a number to choose · <kbd>Enter</kbd> keeps the highlighted diver</p>
+        </div>
+      </section>
+
+      <section class="screen screen-clear" data-screen="weapons" hidden>
+        <div class="panel hero-panel">
+          <h2>Choose your weapon</h2>
+          <p class="hint">Any diver can use any weapon. Talent picks draw from your diver’s and your weapons’ talents together.</p>
+          <div class="heroes weapons" data-weapons></div>
+          <div class="actions">
+            <button class="btn" type="button" data-action="back">Back</button>
+          </div>
+          <p class="hint">Press a number to choose · <kbd>Enter</kbd> keeps the highlighted weapon</p>
+        </div>
+      </section>
+
+      <section class="screen screen-clear" data-screen="depths" hidden>
+        <div class="panel depth-panel">
+          <h2>Choose your dive</h2>
+          <p class="diver-line" data-diver></p>
+          <p class="hint">Clear a depth to unlock the one below it.</p>
+          <ol class="depths" data-depths></ol>
+          <div class="actions">
+            <button class="btn" type="button" data-action="back">Change weapon</button>
+          </div>
+          <p class="hint"><kbd>Enter</kbd> dives into the deepest open depth</p>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="levelup" hidden>
+        <div class="panel wide">
+          <p class="eyebrow" data-levelup-eyebrow></p>
+          <h2 data-levelup-title>Choose an upgrade</h2>
+          <p class="hint" data-levelup-hint>Click a card or press its number key</p>
+          <div class="cards" data-cards></div>
+          <div class="actions">
+            <button class="btn" type="button" data-action="reroll" hidden>Reroll</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="paused" hidden>
+        <div class="panel">
+          <p class="eyebrow" data-depth></p>
+          <h2>Paused</h2>
+          <div class="build" data-build></div>
+          <div class="actions">
+            <button class="btn primary" type="button" data-action="resume">Resume</button>
+            <button class="btn" type="button" data-action="depths">Abandon dive</button>
+          </div>
+          <div class="actions audio-actions">
+            <button class="btn small" type="button" data-action="toggleMusic">Music: on</button>
+            <button class="btn small" type="button" data-action="toggleSfx">Sounds: on</button>
+          </div>
+          <p class="hint" data-muted-note hidden>All sound is muted. Press <kbd>M</kbd> to unmute.</p>
+          <p class="hint">Press <kbd>Esc</kbd> to resume</p>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="gameover" hidden>
+        <div class="panel">
+          <p class="eyebrow" data-depth></p>
+          <h2>Lost to the deep</h2>
+          <p class="new-best" data-new-best hidden>New best time!</p>
+          <div class="stats" data-stats></div>
+          <div class="build" data-build></div>
+          <div class="actions">
+            <button class="btn primary" type="button" data-action="restart">Dive again</button>
+            <button class="btn" type="button" data-action="depths">Choose depth</button>
+          </div>
+          <p class="hint">or press <kbd>R</kbd> · seed <span data-seed></span></p>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="cleared" hidden>
+        <div class="panel">
+          <p class="eyebrow" data-depth></p>
+          <h2>Depth cleared</h2>
+          <p class="tagline" data-level-name></p>
+          <div class="stats" data-stats></div>
+          <div class="build" data-build></div>
+          <p class="next" data-next></p>
+          <div class="actions">
+            <button class="btn primary" type="button" data-action="depths">Continue</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
