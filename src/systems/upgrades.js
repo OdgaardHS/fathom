@@ -109,26 +109,34 @@ export function rollTrinkets(player, rng, count = CONFIG.levelUpChoices) {
   return drawWeighted(unfoundTrinkets(player).map((id) => trinketOption(player, id)), rng, count);
 }
 
-/** Second step: one card per weapon with a free trinket slot. */
-export function socketOptions(player, trinketId) {
-  const t = TRINKETS[trinketId];
-  return player.weapons
-    .filter((w) => !w.trinket)
-    .map((w) => {
-      const works = worksOn(trinketId, w.id);
-      return {
-        kind: 'socket',
-        id: w.id,
-        trinket: trinketId,
-        name: w.def.name,
-        icon: w.def.icon,
-        sprite: { kind: 'weapon', id: w.id },
-        color: w.def.color,
-        tag: `Attach ${t.name} · Lv ${w.level}`,
-        text: works ? t.onWeapon[w.id] : `No effect on the ${w.def.name}.`,
-        note: works ? null : 'Its effect on your other weapons still works.',
-      };
+/**
+ * Your weapon slots for the trinket screen, so trinkets can be dropped straight onto a weapon.
+ * One entry per slot (null when the slot is empty), with the trinket it already holds and what
+ * each offered trinket would do on it (`effects[trinketId]`, null where it has no effect).
+ */
+export function trinketLoadout(player, offers) {
+  const slots = [];
+  for (let i = 0; i < player.weaponSlots; i++) {
+    const w = player.weapons[i];
+    if (!w) {
+      slots.push(null);
+      continue;
+    }
+    const held = w.trinket ? TRINKETS[w.trinket] : null;
+    const effects = {};
+    for (const t of offers) effects[t.id] = worksOn(t.id, w.id) ? TRINKETS[t.id].onWeapon[w.id] : null;
+    slots.push({
+      id: w.id,
+      name: w.def.name,
+      icon: w.def.icon,
+      color: w.def.color,
+      level: w.level,
+      sprite: { kind: 'weapon', id: w.id },
+      trinket: held ? { id: w.trinket, name: held.name, icon: held.icon, color: held.color, sprite: { kind: 'trinket', id: w.trinket } } : null,
+      effects,
     });
+  }
+  return slots;
 }
 
 function trinketOption(player, id) {

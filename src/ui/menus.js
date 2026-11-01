@@ -16,15 +16,21 @@ export class Menus {
   /** `actions` maps each button's data-action to a callback, which receives its data-value. */
   constructor(root, actions) {
     this.root = root;
+    this.actions = actions;
     this.screens = {};
     for (const node of root.querySelectorAll('[data-screen]')) this.screens[node.dataset.screen] = node;
     for (const node of root.querySelectorAll('[data-game-title]')) node.textContent = CONFIG.title;
+    this.trinketView = null; // { choices, loadout, selected } while the trinket screen is up
+    this.drag = null; // a trinket card being dragged toward a weapon
+    this.suppressClick = false;
 
     root.addEventListener('click', (event) => {
+      if (this.suppressClick) return; // the click that ends a drag isn't a pick
       const button = event.target.closest('[data-action]');
-      if (!button || button.disabled) return;
+      if (!button || button.disabled || button.getAttribute('aria-disabled') === 'true') return;
       actions[button.dataset.action]?.(button.dataset.value);
     });
+    this.setupTrinketDrag();
   }
 
   /** Labels on the Music / Sounds buttons (pause screen). */
@@ -130,13 +136,16 @@ export class Menus {
   }
 
   /**
-   * Normal level-ups, talent picks and trinkets (pick one, then the weapon it goes on) share
-   * this screen. `mode` is 'normal' | 'talent' | 'trinket' | 'socket'; `rerolls` null hides the button.
+   * Normal level-ups, talent picks and trinkets share this screen. `mode` is 'normal' | 'talent' |
+   * 'trinket'; `rerolls` null hides the button. On the trinket screen, `loadout` is your weapon
+   * slots (see trinketLoadout in systems/upgrades.js): drag a trinket card onto one, or pick a
+   * trinket (`selected`, by click or number key) and then click a weapon or press its number.
    */
-  showLevelUp(choices, { eyebrow = '', title = '', hint = '', mode = 'normal', rerolls = null } = {}) {
+  showLevelUp(choices, { eyebrow = '', title = '', hint = '', mode = 'normal', rerolls = null, loadout = null, selected = null } = {}) {
     const screen = this.screens.levelup;
+    const trinkets = mode === 'trinket' && loadout;
     screen.classList.toggle('is-talent', mode === 'talent');
-    screen.classList.toggle('is-trinket', mode === 'trinket' || mode === 'socket');
+    screen.classList.toggle('is-trinket', mode === 'trinket');
     screen.querySelector('[data-levelup-eyebrow]').textContent = eyebrow;
     screen.querySelector('[data-levelup-title]').textContent = title;
     screen.querySelector('[data-levelup-hint]').textContent = hint;
@@ -153,8 +162,13 @@ export class Menus {
       card.dataset.action = 'pick';
       card.dataset.value = String(i);
       card.style.setProperty('--accent', choice.color);
+      // Once a trinket is picked, the number keys choose a weapon instead, so the cards hide theirs.
+      if (!(trinkets && selected !== null)) card.append(el('kbd', 'card-key', String(i + 1)));
+      if (trinkets) {
+        card.classList.toggle('selected', selected === i);
+        card.classList.toggle('dimmed', selected !== null && selected !== i);
+      }
       card.append(
-        el('kbd', 'card-key', String(i + 1)),
         itemIcon('card-icon', choice.sprite, choice.icon),
         el('span', 'card-tag', choice.tag),
         el('span', 'card-name', choice.name),
@@ -175,7 +189,176 @@ export class Menus {
       return card;
     });
     screen.querySelector('[data-cards]').replaceChildren(...cards);
+    this.renderLoadout(trinkets ? { choices, loadout, selected } : null);
     this.show('levelup');
+  }
+
+  // ------------------------------------------------ trinket screen: your weapons
+
+  /** The row of weapon slots under the trinket cards (or nothing, on other level-up screens). */
+  renderLoadout(view) {
+    const box = this.screens.levelup.querySelector('[data-loadout]');
+    this.trinketView = view;
+    box.hidden = !view;
+    if (!view) {
+      box.replaceChildren();
+      return;
+    }
+    const { loadout, selected } = view;
+    const slots = el('div', 'slots');
+    loadout.forEach((s, i) => {
+      const slot = el('button', 'slot');
+      slot.type = 'button';
+      slot.dataset.action = 'slot';
+      slot.dataset.value = String(i);
+      const weapon = el('span', 'slot-weapon');
+      const socket = el('span', 'slot-socket');
+      if (!s) {
+        // An empty weapon slot: trinkets go on weapons, so nothing can be dropped here.
+        slot.classList.add('empty');
+        slot.setAttribute('aria-disabled', 'true');
+        slot.append(weapon, socket, el('span', 'slot-name', 'Empty'));
+        slots.append(slot);
+        return;
+      }
+      slot.style.setProperty('--accent', s.color);
+      weapon.append(itemIcon('slot-icon', s.sprite, s.icon), el('span', 'slot-level', String(s.level)));
+      if (s.trinket) {
+        slot.classList.add('full'); // one trinket per weapon
+        slot.setAttribute('aria-disabled', 'true');
+        socket.style.setProperty('--held', s.trinket.color);
+        socket.append(itemIcon('slot-icon', s.trinket.sprite, s.trinket.icon));
+      } else {
+        socket.append(el('span', 'socket-gem'));
+      }
+      slot.append(weapon, socket, el('span', 'slot-name', s.name), el('span', 'slot-tag', 'No effect'));
+      if (selected !== null && !s.trinket) slot.append(el('kbd', 'slot-key', String(i + 1)));
+      slots.append(slot);
+    });
+    this.loadoutInfo = el('p', 'loadout-info');
+    // The explanation sits above the slots, so it stays in view while you drag on a small screen.
+    box.replaceChildren(el('p', 'loadout-title', 'Your weapons'), this.loadoutInfo, slots);
+    this.markSlots(selected);
+    this.hoverSlot(null);
+  }
+
+  /** The trinket being placed: the one being dragged, else the one picked by click or key. */
+  currentTrinket() {
+    if (this.drag?.active) return this.drag.index;
+    return this.trinketView?.selected ?? null;
+  }
+
+  /** Light up the weapons trinket `index` can go on: glowing where it works, dimmed where it does nothing. */
+  markSlots(index) {
+    const view = this.trinketView;
+    if (!view) return;
+    const trinket = index === null ? null : view.choices[index];
+    const box = this.screens.levelup.querySelector('[data-loadout]');
+    if (trinket) box.style.setProperty('--gem', trinket.color);
+    for (const slot of box.querySelectorAll('.slot')) {
+      const s = view.loadout[Number(slot.dataset.value)];
+      const open = Boolean(trinket && s && !s.trinket);
+      slot.classList.toggle('target', open);
+      slot.classList.toggle('works', open && Boolean(s.effects[trinket.id]));
+      slot.classList.toggle('no-effect', open && !s.effects[trinket.id]);
+    }
+  }
+
+  /** Highlight the slot under the pointer (or none) and say what the trinket would do there. */
+  hoverSlot(slot) {
+    if (!this.trinketView) return;
+    for (const s of this.screens.levelup.querySelectorAll('.slot.hover')) if (s !== slot) s.classList.remove('hover');
+    if (slot) slot.classList.add('hover');
+    const [head, body] = this.describeSlot(slot ? Number(slot.dataset.value) : null, this.currentTrinket());
+    this.loadoutInfo.replaceChildren(...(head ? [el('b', null, head), ' '] : []), body);
+  }
+
+  /** [bold lead-in, text] for the line under the weapon slots. */
+  describeSlot(slotIndex, trinketIndex) {
+    const view = this.trinketView;
+    const trinket = trinketIndex === null ? null : view.choices[trinketIndex];
+    if (slotIndex === null) {
+      if (!trinket) return [null, 'Drag a trinket onto a weapon. Or press a trinket’s number, then the weapon’s.'];
+      return [`${trinket.name}:`, 'drop it on a weapon, click one, or press its number. Esc picks another trinket.'];
+    }
+    const s = view.loadout[slotIndex];
+    if (!s) return [null, 'An empty weapon slot. Trinkets go on weapons.'];
+    if (s.trinket) return [null, `Your ${s.name} already holds the ${s.trinket.name}.`];
+    if (!trinket) return [null, `Your ${s.name} has a free trinket slot.`];
+    const text = s.effects[trinket.id];
+    if (text) return [`${trinket.name} on your ${s.name}:`, text];
+    return [`No effect on your ${s.name}.`, `The ${trinket.name}’s effect on your other weapons still works.`];
+  }
+
+  /**
+   * Dragging a trinket card onto a weapon slot. Uses pointer events, so it works with a mouse,
+   * a pen or a finger. A press that doesn't move is an ordinary click (it picks the trinket).
+   */
+  setupTrinketDrag() {
+    const screen = this.screens.levelup;
+    if (!screen) return;
+    screen.addEventListener('pointerdown', (e) => {
+      if (!this.trinketView || e.button !== 0) return;
+      const card = e.target.closest('.card-trinket');
+      if (!card) return;
+      this.drag = { index: Number(card.dataset.value), card, x: e.clientX, y: e.clientY, pointerId: e.pointerId, active: false, ghost: null };
+    });
+    // Hovering a weapon (without dragging) still says what the picked trinket would do there.
+    screen.addEventListener('pointerover', (e) => {
+      if (this.trinketView && !this.drag?.active) this.hoverSlot(e.target.closest('.slot'));
+    });
+    window.addEventListener('pointermove', (e) => {
+      const d = this.drag;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (!d.active) {
+        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 8) return; // not a drag yet
+        this.startDrag(d);
+      }
+      d.ghost.style.left = `${e.clientX}px`;
+      d.ghost.style.top = `${e.clientY}px`;
+      this.hoverSlot(slotAt(e.clientX, e.clientY));
+    });
+    window.addEventListener('pointerup', (e) => {
+      const d = this.drag;
+      if (!d || e.pointerId !== d.pointerId) return;
+      this.drag = null;
+      if (!d.active) return; // just a click: the click handler picks the trinket
+      const slot = slotAt(e.clientX, e.clientY);
+      this.endDrag(d);
+      // The browser sends a click right after this; it isn't a pick.
+      this.suppressClick = true;
+      setTimeout(() => {
+        this.suppressClick = false;
+      }, 0);
+      if (slot && slot.getAttribute('aria-disabled') !== 'true') this.actions.attach?.(`${d.index},${slot.dataset.value}`);
+    });
+    window.addEventListener('pointercancel', (e) => {
+      const d = this.drag;
+      if (!d || e.pointerId !== d.pointerId) return;
+      this.drag = null;
+      if (d.active) this.endDrag(d);
+    });
+  }
+
+  startDrag(d) {
+    d.active = true;
+    d.card.classList.add('is-dragged');
+    this.screens.levelup.classList.add('dragging');
+    const choice = this.trinketView.choices[d.index];
+    const ghost = el('div', 'trinket-ghost');
+    ghost.style.setProperty('--accent', choice.color);
+    ghost.append(itemIcon('ghost-icon', choice.sprite, choice.icon));
+    document.body.append(ghost);
+    d.ghost = ghost;
+    this.markSlots(d.index);
+  }
+
+  endDrag(d) {
+    d.ghost?.remove();
+    d.card.classList.remove('is-dragged');
+    this.screens.levelup.classList.remove('dragging');
+    this.markSlots(this.trinketView?.selected ?? null);
+    this.hoverSlot(null);
   }
 
   showPause(summary) {
@@ -214,6 +397,11 @@ export class Menus {
     renderBuild(screen.querySelector('[data-build]'), summary);
     this.show('cleared');
   }
+}
+
+/** The weapon slot under a screen point (the drag ghost ignores the pointer, so it's never in the way). */
+function slotAt(x, y) {
+  return document.elementFromPoint(x, y)?.closest('.slot') ?? null;
 }
 
 function renderStats(container, stats) {

@@ -22,7 +22,7 @@ import { drawHeartbeat } from './render/omens.js';
 import { getTheme } from './render/themes/index.js';
 import { Effects } from './systems/effects.js';
 import { Spawner } from './systems/spawner.js';
-import { applyUpgrade, canTakeTrinket, rollTalents, rollTrinkets, rollUpgrades, socketOptions } from './systems/upgrades.js';
+import { applyUpgrade, canTakeTrinket, rollTalents, rollTrinkets, rollUpgrades, trinketLoadout } from './systems/upgrades.js';
 import { drawHud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
 
@@ -111,6 +111,11 @@ export class Game {
       depths: () => this.toDepths(),
       resume: () => this.state === 'paused' && this.setState('playing'),
       pick: (i) => this.pickUpgrade(Number(i)),
+      slot: (i) => this.trinketPick !== null && this.attachTrinket(this.trinketPick, Number(i)),
+      attach: (value) => {
+        const [t, w] = String(value).split(',').map(Number);
+        this.attachTrinket(t, w);
+      },
       reroll: () => this.reroll(),
       toggleMusic: () => this.toggleAudio('music'),
       toggleSfx: () => this.toggleAudio('sfx'),
@@ -139,9 +144,9 @@ export class Game {
     this.boss = null;
     this.announcement = null;
     this.levelQueue = []; // pending level-ups: 'normal', 'talent' or 'trinket'
-    this.levelKind = 'normal'; // what the level-up screen shows: those three, or 'socket'
+    this.levelKind = 'normal'; // what the level-up screen shows: 'normal', 'talent' or 'trinket'
     this.choices = [];
-    this.pendingTrinket = null; // trinket picked, waiting for you to choose its weapon
+    this.trinketPick = null; // trinket screen: index of the trinket picked (by click or key) before choosing its weapon
     this.rerolls = CONFIG.talents.rerollsPerDive;
     this.deathTimer = 0;
     this.clearing = 0;
@@ -376,8 +381,14 @@ export class Game {
         break;
       case 'levelup': {
         const i = numberPressed();
-        if (i !== -1) this.pickUpgrade(i);
+        // On the trinket screen, once a trinket is picked the number keys choose its weapon.
+        if (i !== -1 && this.levelKind === 'trinket' && this.trinketPick !== null) this.attachTrinket(this.trinketPick, i);
+        else if (i !== -1) this.pickUpgrade(i);
         else if (input.wasPressed('KeyR')) this.reroll();
+        else if (input.wasPressed('Escape', 'Backspace') && this.trinketPick !== null) {
+          this.trinketPick = null; // back to choosing a trinket
+          this.showLevelUpMenu();
+        }
         break;
       }
       case 'gameover':
@@ -1093,6 +1104,7 @@ export class Game {
     if (this.levelQueue[0] === 'trinket' && !canTakeTrinket(this.player)) this.levelQueue[0] = 'normal';
     const kind = this.levelQueue[0];
     this.levelKind = kind;
+    this.trinketPick = null;
     if (kind === 'talent') this.choices = rollTalents(this.player, this.rng);
     else if (kind === 'trinket') this.choices = rollTrinkets(this.player, this.rng);
     else this.choices = rollUpgrades(this.player, this.rng, undefined, (id) => this.canFindWeapon(id));
@@ -1116,18 +1128,16 @@ export class Game {
       trinket: {
         eyebrow: 'Elite chest · trinket',
         title: 'Choose a trinket',
-        hint: 'Each weapon holds one trinket. You choose which weapon gets it next.',
-      },
-      socket: {
-        eyebrow: `Trinket · ${TRINKETS[this.pendingTrinket]?.name ?? ''}`,
-        title: 'Choose a weapon for it',
-        hint: 'It stays on that weapon for the rest of the dive.',
+        hint: 'Drag a trinket onto one of your weapons. Each weapon holds one, for the rest of the dive.',
       },
     };
     this.menus.showLevelUp(this.choices, {
       ...screens[kind],
       mode: kind,
       rerolls: kind === 'talent' ? this.rerolls : null,
+      // The trinket screen shows your weapons too, so a trinket can be dropped straight onto one.
+      loadout: kind === 'trinket' ? trinketLoadout(this.player, this.choices) : null,
+      selected: kind === 'trinket' ? this.trinketPick : null,
     });
   }
 
@@ -1139,17 +1149,30 @@ export class Game {
     const choice = this.choices[index];
     this.audio.play('select');
     if (choice.kind === 'trinket') {
-      // Second step: which weapon gets it.
-      this.pendingTrinket = choice.id;
-      this.levelKind = 'socket';
-      this.choices = socketOptions(this.player, choice.id);
-      this.levelUpOpenedAt = performance.now();
+      // Picked without dragging (click or key): next, a click or number key chooses its weapon.
+      this.trinketPick = this.trinketPick === index ? null : index;
       this.showLevelUpMenu();
       return;
     }
+    this.finishPick(choice);
+  }
+
+  /** Trinket screen: put trinket offer `trinketIndex` on the weapon in slot `weaponIndex`. */
+  attachTrinket(trinketIndex, weaponIndex) {
+    if (this.state !== 'levelup' || this.levelKind !== 'trinket') return;
+    if (performance.now() - this.levelUpOpenedAt < 250) return;
+    const trinket = this.choices[trinketIndex];
+    const weapon = this.player.weapons[weaponIndex];
+    if (!trinket || !weapon || weapon.trinket) return; // empty slot, or it already holds one
+    this.audio.play('select');
+    this.finishPick({ kind: 'socket', id: weapon.id, trinket: trinket.id, color: trinket.color });
+  }
+
+  /** Apply a chosen upgrade, talent or trinket, then show the next pending level-up or resume. */
+  finishPick(choice) {
     applyUpgrade(choice, this);
     if (choice.kind === 'weapon' && choice.isNew) this.onWeaponFound(choice.id);
-    this.pendingTrinket = null;
+    this.trinketPick = null;
     this.levelQueue.shift();
     this.effects.burst(this.player.x, this.player.y, choice.color, 16, 180);
     if (this.levelQueue.length > 0) this.openLevelUp();

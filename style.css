@@ -646,6 +646,249 @@ kbd {
   color: var(--muted);
 }
 
+/* ---------- Trinket screen: drag a trinket onto one of your weapons ---------- */
+
+.is-trinket .card-trinket {
+  cursor: grab;
+  touch-action: none; /* a finger drags the card instead of scrolling the screen */
+}
+
+.card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+  transform: translateY(-3px);
+}
+
+.card.dimmed {
+  opacity: 0.55;
+}
+
+.card.is-dragged {
+  opacity: 0.35;
+}
+
+.dragging,
+.dragging * {
+  cursor: grabbing !important;
+}
+
+.loadout {
+  --gem: var(--primary); /* the trinket being placed (set while one is picked or dragged) */
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.loadout[hidden] {
+  display: none;
+}
+
+.loadout-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.slots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+/* One weapon slot: the weapon in a hotbar square, its trinket socket underneath (like the HUD) */
+.slot {
+  --accent: var(--primary);
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 6px;
+  width: 104px;
+  padding: 8px 6px 10px;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, opacity 120ms;
+}
+
+.slot:not([aria-disabled="true"]):hover,
+.slot.hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.slot.target.hover {
+  border-color: var(--gem);
+}
+
+.slot[aria-disabled="true"] {
+  cursor: default;
+}
+
+.slot.empty {
+  opacity: 0.4;
+}
+
+.slot-weapon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.03) 50%, rgba(0, 0, 0, 0.16)), rgba(56, 78, 160, 0.8);
+  border: 2px solid rgba(14, 20, 58, 0.95);
+  border-radius: 13px;
+}
+
+.slot.empty .slot-weapon {
+  background: rgba(56, 78, 160, 0.38);
+}
+
+.slot-weapon img {
+  width: 50px;
+  height: 50px;
+}
+
+.slot-level {
+  position: absolute;
+  right: 5px;
+  bottom: 2px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-shadow: 0 1px 2px #000;
+}
+
+.slot-socket {
+  --held: transparent;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.03) 50%, rgba(0, 0, 0, 0.16)), rgba(34, 128, 146, 0.8);
+  border: 2px solid rgba(8, 38, 48, 0.95);
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px var(--held);
+  transition: box-shadow 120ms, transform 120ms;
+}
+
+.slot.empty .slot-socket {
+  background: rgba(34, 128, 146, 0.3);
+}
+
+.slot-socket img {
+  width: 36px;
+  height: 36px;
+}
+
+.socket-gem {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(200, 245, 255, 0.45);
+  transform: rotate(45deg);
+}
+
+/* Where the trinket can go: glowing where it does something, dim where it doesn't */
+.slot.works .slot-socket {
+  box-shadow: 0 0 0 2px var(--gem), 0 0 14px var(--gem);
+  animation: socket-glow 0.9s ease-in-out infinite alternate;
+}
+
+.slot.works .socket-gem {
+  border-color: var(--gem);
+}
+
+.slot.no-effect {
+  opacity: 0.7;
+}
+
+.slot.no-effect .slot-socket {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+}
+
+.slot.target.hover .slot-socket {
+  transform: scale(1.1);
+}
+
+.slot-name {
+  max-width: 100%;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--muted);
+}
+
+.slot-tag {
+  display: none;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffb38a;
+}
+
+.slot.no-effect .slot-tag {
+  display: block;
+}
+
+.slot-key {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+}
+
+.loadout-info {
+  min-height: 2.8em;
+  max-width: 600px;
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--muted);
+}
+
+.loadout-info b {
+  color: var(--text);
+}
+
+/* The trinket following the pointer while you drag it */
+.trinket-ghost {
+  --accent: var(--primary);
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin: -29px 0 0 -29px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 25%, var(--surface-2));
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+  transform: rotate(-6deg);
+}
+
+.trinket-ghost img {
+  width: 44px;
+  height: 44px;
+}
+
+@keyframes socket-glow {
+  to {
+    box-shadow: 0 0 0 2px var(--gem), 0 0 4px var(--gem);
+  }
+}
+
 /* Music / Sounds toggles on the pause screen */
 .audio-actions {
   margin-top: 10px;
@@ -751,7 +994,8 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   .screen,
-  .card {
+  .card,
+  .slot.works .slot-socket {
     animation: none;
   }
 }

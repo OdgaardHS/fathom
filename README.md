@@ -32,6 +32,7 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
 | --- | --- |
 | WASD / arrow keys | Swim (weapons fire on their own) |
 | Number keys or click | Pick an upgrade, talent or trinket (and a diver or weapon on those screens; the first 9 weapons have keys) |
+| Drag | On the trinket screen, drag a trinket onto one of your weapons (or press its number, then the weapon's; Esc puts it back) |
 | R | Reroll talent offers (once per dive) |
 | Esc / P | Pause (the pause screen also has Music and Sounds on/off buttons) |
 | M | Mute or unmute all sound |
@@ -80,12 +81,17 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
   your skills work rather than adding stats (see below). Offers lean toward talents that play off
   the stats you're already building.
 - **Trinkets**: elite enemies drop a chest that glows blue. Besides its upgrade, it offers a choice
-  of trinkets; then you pick which weapon gets it. Each weapon holds one trinket, which stays on it
+  of trinkets, shown above your weapon slots: drag the one you want onto a weapon. Hovering a weapon
+  while you drag says what the trinket will do there. Each weapon holds one trinket, which stays on it
   for the rest of the dive, and you find each trinket at most once per dive (two elites per depth,
   so up to two trinkets). Every trinket does something for the weapon it's on **and** something with
   your other weapons (see below).
-- **Inventory** (top left): a row of numbered weapon slots with each weapon's level, the slot for
-  its trinket right underneath each one, and your passives in a smaller row below.
+- **Weapon bar** (bottom centre, like a spell bar): a row of numbered weapon slots with each
+  weapon's level, the socket for its trinket right underneath each one, and your passives in a
+  small block to the right (in a row above on narrow screens). While a weapon recharges, a dark
+  wedge sweeps around its slot like a spell cooldown. Weapon notes (drones out, Conductor Coil
+  charge, the Watching Eye's heat) sit just above the bar; a boss's health bar shows at the top,
+  under the timer.
 - **12 passives**, offered on normal level-up cards next to weapons. A passive's card only says
   what it does ("+1 amount"); below that, the icons of the weapons you carry that it affects.
   Hover an icon to see what it does for that weapon. Pearls are XP.
@@ -182,8 +188,9 @@ Each talent card shows "Plays off" with the stats it makes matter.
 | **Split Coral** | Shots that fly out of range split into 3 half-damage pieces that seek the nearest enemies. Pistol Shrimp: every blast throws 3 smaller half-damage blasts onto the nearest enemies | 20% of kills by their shots split the shot into 2 seeking pieces | everything but the Harpoon, Needle Darts, Bubble Net and Pistol Shrimp Claw |
 
 Not every trinket works on every weapon. The trinket card lists the weapons you carry that it does
-nothing for, and the weapon step says what it will do on each weapon (or that it does nothing
-there). Its effect on your other weapons works wherever you put it.
+nothing for. While you drag one (or after picking it with its number key), each free weapon slot
+glows where it works and is marked "No effect" where it doesn't, and hovering a slot says exactly
+what it will do there. Its effect on your other weapons works wherever you put it.
 
 What counts as "firing" (Pilot Fish, Conductor Coil): a weapon's regular attack, i.e. a Harpoon or
 Needle Darts volley, a Drone Launcher launch, a Sonar pulse, a zap, a squirt, a trident attack, a

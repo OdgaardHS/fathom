@@ -11,6 +11,7 @@ export class Weapon {
     if (!this.def) throw new Error(`Unknown weapon "${id}"`);
     this.level = 1;
     this.timer = 0; // general-purpose cooldown timer
+    this.cooldownFull = 0; // what `timer` was set to when it last fired (the HUD's cooldown sweep)
     this.state = {}; // per-weapon scratch data (orbit angle, hit cooldowns, ...)
     this.trinket = null; // id of the trinket in its slot (data/trinkets.js), if any
     this.trinketState = {}; // the trinket's own data (e.g. Conductor Coil's charge)
@@ -31,7 +32,11 @@ export class Weapon {
   }
 
   update(dt, game) {
+    const before = this.timer;
     this.def.update(this, dt, game);
+    // It just fired and started recharging: remember the full wait for the cooldown sweep.
+    // (Pilot Fish and talents only ever shorten a wait, so they never trip this.)
+    if (this.timer > before + 1e-6) this.cooldownFull = this.timer;
   }
 
   draw(ctx, game) {

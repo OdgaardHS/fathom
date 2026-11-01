@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { TAU } from '../core/math.js';
 import { PASSIVES } from '../data/passives.js';
 import { TRINKETS } from '../data/trinkets.js';
 import { drawItemIcon } from '../render/icons.js';
@@ -6,11 +7,15 @@ import { formatTime } from './format.js';
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
-// Inventory (top left): weapon slots in a row, each weapon's trinket slot under it, passives below.
-const WEAPON_SLOT = 42;
-const TRINKET_SLOT = 32;
+// Action bar (bottom centre, like a spell bar): weapon slots in a row with each weapon's trinket
+// socket under it, and the passives in a small block to the right.
+const WEAPON_SLOT = 50;
+const TRINKET_SLOT = 34;
 const PASSIVE_SLOT = 30;
-const SLOT_GAP = 5;
+const SLOT_GAP = 6;
+const PLATE_PAD = 7; // the dark backing plate reaches this far past the slots
+const BOTTOM_GAP = 10; // space between the bar and the bottom edge of the screen
+const SIDE_GAP = 10; // space between the weapon bar and the passives block
 
 // Slot colors, in the style of an inventory hotbar: a rounded square, a dark rim, a lighter top.
 const SLOT_STYLES = {
@@ -62,9 +67,10 @@ export function drawHud(ctx, game, w, h) {
     ctx.fill();
   }
 
-  const below = drawInventory(ctx, p, 16, barH + 40);
-  drawWeaponNotes(ctx, game, 16, below);
-  if (game.boss && !game.boss.dead) drawBossBar(ctx, game.boss, w, h);
+  const bar = drawActionBar(ctx, p, w, h);
+  drawWeaponNotes(ctx, game, bar.left, bar.top - 6);
+  // The boss's health sits at the top, under the timer, so the bottom stays the weapon bar's.
+  if (game.boss && !game.boss.dead) drawBossBar(ctx, game.boss, w, barH + 96);
   if (game.announcement) drawAnnouncement(ctx, game.announcement, w, h);
 }
 
@@ -79,22 +85,30 @@ function label(ctx, text, x, y, { size = 14, weight = 700, color = '#ffffff', al
 }
 
 /**
- * The inventory: a row of weapon slots (numbered like a hotbar, level in the corner), with
- * each weapon's trinket slot right underneath it, and a row of passive slots below that.
- * Empty weapon slots show how many are left; an empty trinket slot under a weapon shows a
- * faint socket. Returns the y just below the inventory.
+ * The action bar, bottom centre: a row of weapon slots (numbered like a hotbar, level in the
+ * corner, a cooldown sweep while the weapon recharges) with each weapon's trinket socket under
+ * it. The passives sit in a small block to the right, or in a row above on narrow screens.
+ * The weapons are always centred. Returns { top, left } of the weapon bar's plate.
  */
-function drawInventory(ctx, p, x, y) {
+function drawActionBar(ctx, p, w, h) {
+  const n = p.weaponSlots;
+  const mainW = n * WEAPON_SLOT + (n - 1) * SLOT_GAP;
+  const mainH = WEAPON_SLOT + 4 + TRINKET_SLOT;
+  const x = Math.round((w - mainW) / 2);
+  const y = Math.round(h - BOTTOM_GAP - PLATE_PAD - mainH);
+  plate(ctx, x - PLATE_PAD, y - PLATE_PAD, mainW + PLATE_PAD * 2, mainH + PLATE_PAD * 2);
+
   const trinketY = y + WEAPON_SLOT + 4;
-  for (let i = 0; i < p.weaponSlots; i++) {
+  for (let i = 0; i < n; i++) {
     const wp = p.weapons[i];
     const sx = x + i * (WEAPON_SLOT + SLOT_GAP);
     slotFrame(ctx, sx, y, WEAPON_SLOT, SLOT_STYLES.weapon, Boolean(wp));
-    label(ctx, String(i + 1), sx + 4, y + 3, { size: 9, color: 'rgba(225, 235, 255, 0.55)', weight: 700 });
     if (wp) {
       itemPicture(ctx, 'weapon', wp.id, wp.def.icon, sx, y, WEAPON_SLOT);
-      label(ctx, String(wp.level), sx + WEAPON_SLOT - 4, y + WEAPON_SLOT - 13, { size: 11, align: 'right' });
+      cooldownSweep(ctx, wp, sx, y, WEAPON_SLOT);
+      label(ctx, String(wp.level), sx + WEAPON_SLOT - 4, y + WEAPON_SLOT - 14, { size: 12, align: 'right' });
     }
+    label(ctx, String(i + 1), sx + 4, y + 3, { size: 9, color: 'rgba(225, 235, 255, 0.6)', weight: 700 });
 
     // its trinket, centered under it
     const tx = sx + (WEAPON_SLOT - TRINKET_SLOT) / 2;
@@ -103,18 +117,78 @@ function drawInventory(ctx, p, x, y) {
     else if (wp) socket(ctx, tx + TRINKET_SLOT / 2, trinketY + TRINKET_SLOT / 2);
   }
 
-  const passiveY = trinketY + TRINKET_SLOT + 10;
-  const passives = [...p.passives];
-  for (let i = 0; i < CONFIG.slots.passives; i++) {
-    const sx = x + i * (PASSIVE_SLOT + SLOT_GAP);
-    const entry = passives[i];
-    slotFrame(ctx, sx, passiveY, PASSIVE_SLOT, SLOT_STYLES.passive, Boolean(entry));
-    if (!entry) continue;
-    const [id, level] = entry;
-    itemPicture(ctx, 'passive', id, PASSIVES[id].icon, sx, passiveY, PASSIVE_SLOT);
-    label(ctx, String(level), sx + PASSIVE_SLOT - 3, passiveY + PASSIVE_SLOT - 11, { size: 10, align: 'right' });
+  // Passives: two rows to the right of the weapons, if there's room; otherwise one row above.
+  const pn = CONFIG.slots.passives;
+  const cols = Math.ceil(pn / 2);
+  const sideW = cols * PASSIVE_SLOT + (cols - 1) * SLOT_GAP;
+  const sideH = 2 * PASSIVE_SLOT + SLOT_GAP;
+  const sideX = x + mainW + PLATE_PAD * 2 + SIDE_GAP;
+  let top = y - PLATE_PAD;
+  const slots = [];
+  if (sideX + sideW + PLATE_PAD <= w - 8) {
+    const sy = Math.round(y + (mainH - sideH) / 2);
+    plate(ctx, sideX - PLATE_PAD, sy - PLATE_PAD, sideW + PLATE_PAD * 2, sideH + PLATE_PAD * 2);
+    for (let i = 0; i < pn; i++) slots.push([sideX + (i % cols) * (PASSIVE_SLOT + SLOT_GAP), sy + Math.floor(i / cols) * (PASSIVE_SLOT + SLOT_GAP)]);
+  } else {
+    const rowW = pn * PASSIVE_SLOT + (pn - 1) * SLOT_GAP;
+    const rx = Math.round((w - rowW) / 2);
+    const ry = top - 6 - PLATE_PAD - PASSIVE_SLOT;
+    plate(ctx, rx - PLATE_PAD, ry - PLATE_PAD, rowW + PLATE_PAD * 2, PASSIVE_SLOT + PLATE_PAD * 2);
+    for (let i = 0; i < pn; i++) slots.push([rx + i * (PASSIVE_SLOT + SLOT_GAP), ry]);
+    top = ry - PLATE_PAD;
   }
-  return passiveY + PASSIVE_SLOT + 8;
+  const passives = [...p.passives];
+  slots.forEach(([sx, sy], i) => {
+    const entry = passives[i];
+    slotFrame(ctx, sx, sy, PASSIVE_SLOT, SLOT_STYLES.passive, Boolean(entry));
+    if (!entry) return;
+    const [id, level] = entry;
+    itemPicture(ctx, 'passive', id, PASSIVES[id].icon, sx, sy, PASSIVE_SLOT);
+    label(ctx, String(level), sx + PASSIVE_SLOT - 3, sy + PASSIVE_SLOT - 11, { size: 10, align: 'right' });
+  });
+  return { top, left: x - PLATE_PAD };
+}
+
+/** The dark, rounded backing behind a group of slots. */
+function plate(ctx, x, y, width, height) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, 12);
+  ctx.fillStyle = 'rgba(4, 12, 22, 0.58)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(160, 230, 240, 0.16)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+/**
+ * While a weapon recharges, a dark wedge covers its slot and shrinks clockwise from 12 o'clock,
+ * like a spell cooldown. Weapons without a cooldown (Razor Starfish, Siphonophore Tendrils,
+ * The Watching Eye) never show one.
+ */
+function cooldownSweep(ctx, wp, x, y, size) {
+  if (!(wp.timer > 0) || !(wp.cooldownFull > 0)) return;
+  const left = Math.min(1, wp.timer / wp.cooldownFull);
+  const cx = x + size / 2;
+  const cy = y + size / 2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x + 1, y + 1, size - 2, size - 2, size * 0.2);
+  ctx.clip();
+  const start = -Math.PI / 2 + (1 - left) * TAU;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, size, start, Math.PI * 1.5);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0, 6, 14, 0.5)';
+  ctx.fill();
+  // the sweeping edge
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(start) * size, cy + Math.sin(start) * size);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.restore();
 }
 
 /** A rounded inventory slot: colored fill, lighter toward the top, dark rim. */
@@ -167,8 +241,8 @@ function socket(ctx, cx, cy) {
   ctx.stroke();
 }
 
-/** Extra lines some weapons show (e.g. how many drones are out), plus active buffs. */
-function drawWeaponNotes(ctx, game, x, y) {
+/** Extra lines some weapons show (e.g. how many drones are out), plus active buffs, stacked up from `bottom`. */
+function drawWeaponNotes(ctx, game, x, bottom) {
   const p = game.player;
   const lines = [];
   for (const w of p.weapons) {
@@ -178,15 +252,16 @@ function drawWeaponNotes(ctx, game, x, y) {
     if (trinketNote) lines.push(trinketNote);
   }
   if (p.hasBuff('overclock')) lines.push(`Overclock ${p.buffs.get('overclock').toFixed(1)}s`);
-  lines.forEach((line, i) => label(ctx, line, x, y + i * 16, { size: 12, color: '#bfe9ef', weight: 600 }));
+  const top = bottom - lines.length * 16;
+  lines.forEach((line, i) => label(ctx, line, x, top + i * 16, { size: 12, color: '#bfe9ef', weight: 600 }));
 }
 
-function drawBossBar(ctx, boss, w, h) {
-  const barW = Math.min(520, w - 40);
-  const barH = 12;
+/** The boss's name and health, centred at height `y` (under the timer). */
+function drawBossBar(ctx, boss, w, y) {
+  const barW = Math.min(420, w - 40);
+  const barH = 10;
   const x = (w - barW) / 2;
-  const y = h - 40;
-  label(ctx, boss.name, w / 2, y - 22, { size: 14, align: 'center', color: '#ffd166' });
+  label(ctx, boss.name, w / 2, y - 19, { size: 13, align: 'center', color: '#ffd166' });
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
   ctx.fillRect(x - 2, y - 2, barW + 4, barH + 4);
   ctx.fillStyle = '#d64545';
@@ -196,6 +271,9 @@ function drawBossBar(ctx, boss, w, h) {
 function drawAnnouncement(ctx, a, w, h) {
   // Quick fade in, slower fade out
   ctx.globalAlpha = Math.max(0, Math.min(1, (a.duration - a.time) * 6, a.time * 2));
-  label(ctx, a.text, w / 2, h * 0.2, { size: 30, align: 'center', color: '#ffd166', weight: 800 });
+  // Shrink long messages to fit narrow screens.
+  ctx.font = `800 30px ${FONT}`;
+  const size = Math.max(14, Math.min(30, (30 * (w - 32)) / ctx.measureText(a.text).width));
+  label(ctx, a.text, w / 2, Math.max(h * 0.2, 132), { size, align: 'center', color: '#ffd166', weight: 800 });
   ctx.globalAlpha = 1;
 }
