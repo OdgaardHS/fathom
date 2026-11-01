@@ -8,9 +8,10 @@ import { ENEMY_TYPES, MAX_ENEMY_RADIUS } from './data/enemies.js';
 import { HEROES, HERO_ORDER } from './data/heroes.js';
 import { LEVELS, bossTime, isPlayable } from './data/levels.js';
 import { PASSIVES } from './data/passives.js';
-import { TIER_COLORS, findTalent } from './data/talents.js';
-import { TRINKETS, UNDERTOW_RETURN } from './data/trinkets.js';
-import { WEAPONS, weaponsUsing } from './data/weapons.js';
+import { TAG_LABELS, TIER_COLORS, cardStrength, findTalent, talentText } from './data/talents.js';
+import { TRINKETS, UNDERTOW_RETURN, trinketPower } from './data/trinkets.js';
+import { WEAPONS } from './data/weapons.js';
+import { Crewmate } from './entities/crewmate.js';
 import { Drone } from './entities/drone.js';
 import { Enemy, resetEnemyIds } from './entities/enemy.js';
 import { Hazard } from './entities/hazard.js';
@@ -22,7 +23,21 @@ import { drawHeartbeat } from './render/omens.js';
 import { getTheme } from './render/themes/index.js';
 import { Effects } from './systems/effects.js';
 import { Spawner } from './systems/spawner.js';
-import { applyUpgrade, canTakeTrinket, rollTalents, rollTrinkets, rollUpgrades, trinketLoadout } from './systems/upgrades.js';
+import {
+  bankDive,
+  buy,
+  canBuy,
+  loadoutFor,
+  nodeKey,
+  nodeMax,
+  nodeRank,
+  record as progressRecord,
+  refund,
+  refundBlocked,
+  resetTree,
+  treeState,
+} from './systems/progression.js';
+import { applyUpgrade, canTakeTrinket, cardCount, findUpgrade, rollTrinkets, rollUpgrades, trinketLoadout } from './systems/upgrades.js';
 import { drawHud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
 
@@ -87,7 +102,7 @@ export class Game {
     this.progress = loadProgress();
     this.audio = new Audio(); // sound effects and music (src/audio/)
     const savedHero = loadHeroChoice();
-    this.heroId = HEROES[savedHero] ? savedHero : CONFIG.defaultHero;
+    this.heroId = HEROES[savedHero] && this.isHeroUnlocked(savedHero) ? savedHero : CONFIG.defaultHero;
     const savedWeapon = loadWeaponChoice();
     this.weaponId = WEAPONS[savedWeapon] && this.isWeaponUnlocked(savedWeapon) ? savedWeapon : CONFIG.defaultWeapon;
 
@@ -117,6 +132,20 @@ export class Game {
         this.attachTrinket(t, w);
       },
       reroll: () => this.reroll(),
+      feed: (value) => this.feed(String(value)),
+      talents: () => this.openTalents(),
+      talentsDone: () => this.closeTalents(),
+      talentTab: (value) => this.talentsAction(() => {
+        const [kind, id] = String(value).split(':');
+        this.talentTab = { kind, id };
+      }),
+      talentBuy: (value) => {
+        const [key, option] = String(value).split('#');
+        this.talentsAction(() => buy(this.progress, this.talentTab.kind, this.talentTab.id, key, option || null), 'select');
+      },
+      talentRefund: (key) => this.talentsAction(() => refund(this.progress, this.talentTab.kind, this.talentTab.id, key), 'pearl'),
+      talentReset: () => this.talentsAction(() => resetTree(this.progress, this.talentTab.kind, this.talentTab.id)),
+      talentLevel: () => this.talentsAction(() => this.debugLevelUp()),
       toggleMusic: () => this.toggleAudio('music'),
       toggleSfx: () => this.toggleAudio('sfx'),
     });
@@ -139,15 +168,21 @@ export class Game {
     this.projectiles = [];
     this.enemyShots = [];
     this.hazards = [];
+    this.callIns = []; // the Captain's ship: depth charges on their way down
+    this.reefs = []; // Coralline's coral outcrops: walls enemies have to swim around
     this.pickups = [];
     this.gemCount = 0;
     this.boss = null;
     this.announcement = null;
-    this.levelQueue = []; // pending level-ups: 'normal', 'talent' or 'trinket'
-    this.levelKind = 'normal'; // what the level-up screen shows: 'normal', 'talent' or 'trinket'
+    this.levelQueue = []; // pending level-ups: 'normal' or 'trinket'
+    this.levelKind = 'normal'; // what the level-up screen shows: 'normal' or 'trinket'
     this.choices = [];
     this.trinketPick = null; // trinket screen: index of the trinket picked (by click or key) before choosing its weapon
-    this.rerolls = CONFIG.talents.rerollsPerDive;
+    this.feedPick = null; // Hollow Out / Pour Out: what you've asked to eat ('w:index' or 'p:id'), waiting for a second click
+    this.rerolls = 0; // level-up card rerolls left (the Hollow Diver's Spit It Out)
+    this.unlockedHero = null; // a secret diver this dive unlocked (shown on the cleared screen)
+    this.banked = false; // this dive's XP has gone into the character's and weapons' levels
+    this.diveResults = null; // what levelled up when it did (game-over / cleared screens)
     this.deathTimer = 0;
     this.clearing = 0;
     this.clearedAt = null;
@@ -157,7 +192,7 @@ export class Game {
   }
 
   chooseHero(id) {
-    if (!HEROES[id]) return;
+    if (!HEROES[id] || !this.isHeroUnlocked(id)) return;
     this.heroId = id;
     saveHeroChoice(id);
     this.setState('weapons');
@@ -168,6 +203,11 @@ export class Game {
     this.weaponId = id;
     saveWeaponChoice(id);
     this.setState('depths');
+  }
+
+  /** Secret divers (the Hollow Diver) only show up once unlocked. Debug mode (F3) unlocks them. */
+  isHeroUnlocked(id) {
+    return !HEROES[id]?.secret || this.debug || Boolean(this.progress.secrets?.[id]);
   }
 
   /**
@@ -214,9 +254,11 @@ export class Game {
     this.rng = createRng(this.seed);
     this.resetWorld();
     resetEnemyIds(); // so the same seed replays the same dive
-    this.player = new Player(0, 0, this.heroId);
+    // Every talent taken in this character's tree, and in the weapons' trees, comes along.
+    this.player = new Player(0, 0, this.heroId, loadoutFor(this.progress, this.heroId));
     this.player.addWeapon(this.weaponId);
-    this.player.recalcStats(); // the starting weapon may carry a passive (e.g. the drone cap)
+    this.player.recalcStats(); // the starting weapon may carry a passive, and brings its tree's talents
+    this.rerolls = this.player.flags.rerolls ?? 0;
     this.spawner = new Spawner(this, level);
     this.audio.setIntensity('calm');
     this.camera.snapTo(0, 0);
@@ -224,6 +266,7 @@ export class Game {
   }
 
   toDepths() {
+    this.bankDive(); // abandoning a dive still keeps what it earned
     this.player = null;
     this.resetWorld();
     this.setState('depths');
@@ -238,7 +281,7 @@ export class Game {
         break;
       case 'heroes':
         this.menus.showHeroes(
-          HERO_ORDER.map((id) => ({ id, ...HEROES[id], affects: weaponsUsing(HEROES[id].trait.tags) })),
+          HERO_ORDER.map((id) => ({ id, ...HEROES[id], locked: !this.isHeroUnlocked(id) })),
           this.heroId,
         );
         break;
@@ -246,7 +289,7 @@ export class Game {
         this.menus.showWeapons(this.weaponEntries(), this.weaponId);
         break;
       case 'depths':
-        this.menus.showDepths(this.depthEntries(), HEROES[this.heroId], WEAPONS[this.weaponId]);
+        this.menus.showDepths(this.depthEntries(), HEROES[this.heroId], WEAPONS[this.weaponId], this.unspentPoints());
         break;
       case 'playing':
         this.menus.hide();
@@ -259,6 +302,9 @@ export class Game {
         break;
       case 'cleared':
         this.menus.showCleared(this.runSummary(), this.nextDepthText());
+        break;
+      case 'talents':
+        this.menus.showTalents(this.talentView());
         break;
     }
   }
@@ -324,6 +370,11 @@ export class Game {
   }
 
   nextDepthText() {
+    const secret = this.unlockedHero ? ` Something hollow followed you up: ${HEROES[this.unlockedHero].name} waits on the diver select.` : '';
+    return this.depthText() + secret;
+  }
+
+  depthText() {
     const below = LEVELS[LEVELS.indexOf(this.level) + 1];
     if (!below) return 'There is nothing deeper. Or is there?';
     if (isPlayable(below)) return `${below.name} is now unlocked.`;
@@ -342,7 +393,7 @@ export class Game {
     if (input.wasPressed('F3', 'Backquote')) {
       this.debug = !this.debug;
       // refresh which depths and weapons are open
-      if (this.state === 'depths' || this.state === 'weapons') this.setState(this.state);
+      if (this.state === 'depths' || this.state === 'weapons' || this.state === 'heroes') this.setState(this.state);
     }
     const numberPressed = () => NUMBER_KEYS.findIndex((keys) => input.wasPressed(...keys));
 
@@ -353,7 +404,7 @@ export class Game {
       case 'heroes': {
         const i = numberPressed();
         if (input.wasPressed('Escape')) this.setState('title');
-        else if (i !== -1 && HERO_ORDER[i]) this.chooseHero(HERO_ORDER[i]);
+        else if (i !== -1 && HERO_ORDER[i]) this.chooseHero(HERO_ORDER[i]); // locked divers are ignored
         else if (input.wasPressed('Enter')) this.chooseHero(this.heroId);
         break;
       }
@@ -385,14 +436,19 @@ export class Game {
         if (i !== -1 && this.levelKind === 'trinket' && this.trinketPick !== null) this.attachTrinket(this.trinketPick, i);
         else if (i !== -1) this.pickUpgrade(i);
         else if (input.wasPressed('KeyR')) this.reroll();
-        else if (input.wasPressed('Escape', 'Backspace') && this.trinketPick !== null) {
+        else if (input.wasPressed('Escape', 'Backspace') && (this.trinketPick !== null || this.feedPick !== null)) {
           this.trinketPick = null; // back to choosing a trinket
+          this.feedPick = null; // or: don't eat that after all
           this.showLevelUpMenu();
         }
         break;
       }
       case 'gameover':
         if (input.wasPressed('KeyR', 'Enter')) this.startRun(this.level.id);
+        else if (input.wasPressed('KeyT')) this.openTalents();
+        break;
+      case 'talents':
+        if (input.wasPressed('Escape', 'Enter')) this.closeTalents();
         break;
       case 'cleared':
         if (input.wasPressed('Enter', 'Space')) this.toDepths();
@@ -434,8 +490,11 @@ export class Game {
     } else {
       p.update(dt, this);
     }
+    if (!p.dead) this.syncCrew();
     for (const a of this.allies) if (!a.dead) a.update(dt, this);
     this.updateLaserFence(dt);
+    this.updateCallIns();
+    this.updateReefs(dt);
     if (this.level.current) this.applyCurrent(dt);
 
     if (this.clearing > 0) {
@@ -509,6 +568,7 @@ export class Game {
         // (Not while it's sealed in a Bubble Net bubble; bosses and elites are never sealed in.)
         const sealed = e.trapUntil > this.time && !e.boss && !e.elite;
         if (!sealed) p.takeDamage(e.damage, this);
+        if (!p.dead) p.trigger('touched', this, e); // Coralline's Barbed Polyps and Colossus
         const d = Math.sqrt(d2) || 1;
         e.x = p.x + (dx / d) * min;
         e.y = p.y + (dy / d) * min;
@@ -529,7 +589,6 @@ export class Game {
       if (pr.dead) continue;
       pr.update(dt);
       if (pr.dead && !pr.reeledIn) this.onProjectileExpired(pr);
-      if (!pr.dead && f.treasureHooks) this.magnetizePearls(pr.x, pr.y, 16 + pr.radius * 2);
 
       if (!pr.dead && pr.hits) {
         // Copy the candidates: a hit can spawn new projectiles and query the grid again.
@@ -874,11 +933,93 @@ export class Game {
    */
   weaponFired(w) {
     this.player.trigger('weaponFire', this, w);
-    const trinket = w.trinket ? TRINKETS[w.trinket] : null;
-    const power = trinket?.power?.(w, this) ?? NORMAL_ATTACK;
+    let power = trinketPower(w, this) ?? NORMAL_ATTACK;
+    // Calibration (talent): the first attack after a level-up hits twice as hard.
+    if (this.player.counters.calibrated?.delete(w.id)) power = { ...power, damage: power.damage * 2, color: power.color ?? '#9ef0ff' };
     if (FIRE_SOUNDS[w.id]) this.audio.play(FIRE_SOUNDS[w.id], { big: power.charged });
     if (power.charged) this.audio.play('overcharge');
     return power;
+  }
+
+  // ------------------------------------------------------------- the Captain
+
+  /** Keep the right number of crewmates at your side (First Mate, Second Mate). */
+  syncCrew() {
+    const f = this.player.flags;
+    const want = f.crew ? (f.secondMate ? 2 : 1) : 0;
+    const crew = this.allies.filter((a) => a.kind === 'crew' && !a.dead);
+    for (let slot = crew.length; slot < want; slot++) this.allies.push(new Crewmate(this, slot));
+    for (const c of crew) if (c.slot >= want) c.dead = true;
+  }
+
+  /**
+   * Something dropped from the surface (the Captain's depth charges): a marker shows where it
+   * will land, then after `delay` seconds it blows, hitting everything within `radius`.
+   */
+  callIn({ x, y, delay = 0.8, radius = 60, damage, source = null, color = '#ffb347' }) {
+    this.callIns.push({ x, y, at: this.time + delay, start: this.time, radius, damage, source, color });
+  }
+
+  updateCallIns() {
+    if (this.callIns.length === 0) return;
+    const keep = [];
+    for (const c of this.callIns) {
+      if (this.time < c.at) {
+        keep.push(c);
+        continue;
+      }
+      const hit = this.blast(c.x, c.y, c.radius, c.damage, c.source, { color: c.color, knockback: 200 });
+      // Spotter Rounds: the ship's call-ins mark what they hit.
+      if (this.player?.flags.spotterRounds) for (const e of hit) e.mark(this.time + 3 * this.player.stats.duration, 'ship');
+      for (let i = 0; i < 3; i++) this.effects.bubble(c.x + (Math.random() - 0.5) * c.radius, c.y + (Math.random() - 0.5) * c.radius);
+      this.audio.play('snapBurst');
+    }
+    this.callIns = keep;
+  }
+
+  // ------------------------------------------------------------ Coralline
+
+  /** A coral outcrop at (x, y) that enemies can't swim through, for `life` seconds. */
+  growReef(x, y, radius, life) {
+    const f = this.player?.flags ?? {};
+    if (f.atoll) life *= 2; // Atoll: twice as long, and they keep growing
+    this.reefs.push({ x, y, radius, base: radius, born: this.time, until: this.time + life, sting: 0, seed: Math.random() * 6 });
+    if (this.reefs.length > 40) this.reefs.shift();
+  }
+
+  /** Outcrops push enemies out, and (with talents) sting, slow and heal. */
+  updateReefs(dt) {
+    if (this.reefs.length === 0) return;
+    const p = this.player;
+    const f = p?.flags ?? {};
+    this.reefs = this.reefs.filter((r) => r.until > this.time);
+    let restful = false; // Reef Keeper: next to at least one outcrop
+    for (const r of this.reefs) {
+      const grow = Math.min(1, (this.time - r.born) / 0.3);
+      r.radius = r.base * grow * (f.atoll ? 1 + Math.min(1, (this.time - r.born) / 10) : 1);
+      r.sting -= dt;
+      const sting = f.brainCoral && r.sting <= 0;
+      if (sting) r.sting = 0.5;
+      const reach = r.radius + (f.reefKeeper ? 60 : 0);
+      for (const e of this.enemiesNear(r.x, r.y, reach)) {
+        if (e.dead) continue;
+        const dx = e.x - r.x;
+        const dy = e.y - r.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (f.reefKeeper && d < reach + e.radius) e.slow(0.65, 0.2); // Reef Keeper
+        const min = r.radius + e.radius;
+        if (d >= min) continue;
+        if (!e.boss) {
+          // a wall: push it back out to the edge
+          e.x = r.x + (dx / d) * min;
+          e.y = r.y + (dy / d) * min;
+        }
+        if (sting && p) this.strike(e, (8 + 2 * p.level) * p.stats.might * 0.5, { kind: 'reef' }); // Brain Coral
+      }
+      if (p && (p.x - r.x) ** 2 + (p.y - r.y) ** 2 < (r.radius + p.radius + 30) ** 2) restful = true;
+    }
+    // Reef Keeper: rest next to an outcrop to heal
+    if (f.reefKeeper && restful && !p.dead) p.heal(2 * dt);
   }
 
   // ------------------------------------------------------------------ drones
@@ -1103,42 +1244,134 @@ export class Game {
     // A trinket with nowhere to go (every weapon has one, or you've found them all) becomes an upgrade.
     if (this.levelQueue[0] === 'trinket' && !canTakeTrinket(this.player)) this.levelQueue[0] = 'normal';
     const kind = this.levelQueue[0];
+    const c = this.player.counters;
+    // Last Meal (the Hollow Diver): the level-up it ate to get back up never comes.
+    if (kind === 'normal' && c.mealDebt > 0) {
+      c.mealDebt--;
+      this.levelQueue.shift();
+      this.effects.text(this.player.x, this.player.y - 30, 'Level-up eaten', '#b9a8ff', 15);
+      if (this.levelQueue.length > 0) this.openLevelUp();
+      else if (this.state === 'levelup') this.setState('playing');
+      return;
+    }
     this.levelKind = kind;
     this.trinketPick = null;
-    if (kind === 'talent') this.choices = rollTalents(this.player, this.rng);
-    else if (kind === 'trinket') this.choices = rollTrinkets(this.player, this.rng);
-    else this.choices = rollUpgrades(this.player, this.rng, undefined, (id) => this.canFindWeapon(id));
+    this.feedPick = null;
+    if (kind === 'trinket') this.choices = rollTrinkets(this.player, this.rng);
+    else this.choices = this.rollCards();
     this.levelUpOpenedAt = performance.now();
     this.state = 'levelup';
     this.updateMusic('levelup');
-    this.audio.play({ talent: 'talent', trinket: 'trinket' }[kind] ?? 'levelUp');
+    this.audio.play(kind === 'trinket' ? 'trinket' : 'levelUp');
     this.showLevelUpMenu();
+  }
+
+  /**
+   * The cards for a normal level-up, each with `strength`: how many levels it's worth (the Hollow
+   * Diver's are stronger). With Aftertaste, the card passed up last time comes back, stronger still.
+   */
+  rollCards() {
+    const p = this.player;
+    const canOffer = (id) => this.canFindWeapon(id);
+    const choices = rollUpgrades(p, this.rng, undefined, canOffer);
+    const strength = cardStrength(p);
+    for (const c of choices) c.strength = strength;
+    const passed = p.flags.aftertaste ? p.counters.aftertaste : null;
+    const back = passed && findUpgrade(p, passed, canOffer);
+    if (back && back.kind !== 'heal') {
+      const i = choices.findIndex((c) => c.kind === back.kind && c.id === back.id);
+      const card = { ...back, strength: strength + 0.25, aftertaste: true };
+      if (i !== -1) choices[i] = card; // it was drawn again anyway
+      else if (choices[0]?.kind === 'heal') choices[0] = card; // instead of the "everything is maxed" card
+      else if (choices.length < cardCount(p)) choices.push(card);
+      else choices[choices.length - 1] = card;
+    }
+    return choices;
+  }
+
+  /** What happens to the cards you don't pick on this screen (the Hollow Diver's talents). */
+  levelUpRule() {
+    const p = this.player;
+    if (this.levelKind !== 'normal' || this.choices.length < 2) return null;
+    if (p.flags.gorge && ((p.counters.levelUps ?? 0) + 1) % 5 === 0) return 'gorge';
+    if (p.flags.nothingWasted) return 'nothingWasted';
+    return null;
   }
 
   showLevelUpMenu() {
     const kind = this.levelKind;
     const level = this.player.level;
+    const p = this.player;
+    const rule = this.levelUpRule();
+    const normalHint = {
+      gorge: 'Gorge: whichever card you pick, you take both.',
+      nothingWasted: 'Nothing Wasted: you also get the other card, at normal strength.',
+    }[rule] ?? (p.flags.devour && this.choices.length > 1 ? 'Devour: the card you pass up heals you for 10.' : 'Click a card or press its number key');
     const screens = {
-      normal: { eyebrow: `Level ${level}`, title: 'Choose an upgrade', hint: 'Click a card or press its number key' },
-      talent: {
-        eyebrow: `Level ${level} · talent`,
-        title: 'Choose a talent',
-        hint: 'Talents change how your skills work, so the stats you collect pay off in new ways. Click a card or press its number.',
-      },
+      normal: { eyebrow: `Level ${level}`, title: rule === 'gorge' ? 'Gorge' : this.choices.length === 1 ? 'Take it' : 'Choose an upgrade', hint: normalHint },
       trinket: {
         eyebrow: 'Elite chest · trinket',
         title: 'Choose a trinket',
-        hint: 'Drag a trinket onto one of your weapons. Each weapon holds one, for the rest of the dive.',
+        // Twin Sockets and Inner Shrine (the Hollow Diver) change where trinkets can go.
+        hint: `Drag a trinket onto one of your weapons. ${p.flags.twinSockets ? 'Each weapon holds two' : 'Each weapon holds one'}${p.flags.innerShrine ? ', and the suit holds one that works on every weapon' : ''}, for the rest of the dive.`,
       },
     };
     this.menus.showLevelUp(this.choices, {
       ...screens[kind],
       mode: kind,
-      rerolls: kind === 'talent' ? this.rerolls : null,
+      rerolls: kind === 'normal' && this.player.flags.rerolls ? this.rerolls : null, // Spit It Out
       // The trinket screen shows your weapons too, so a trinket can be dropped straight onto one.
       loadout: kind === 'trinket' ? trinketLoadout(this.player, this.choices) : null,
       selected: kind === 'trinket' ? this.trinketPick : null,
+      feed: kind === 'normal' ? this.feedView() : null,
     });
+  }
+
+  /** Hollow Out / Pour Out: the weapons and passives the Hollow Diver can eat on this screen. */
+  feedView() {
+    const p = this.player;
+    const weapons = p.flags.hollowOut && p.weapons.length > 1;
+    const passives = p.flags.pourOut && p.passives.size > 1;
+    if (!weapons && !passives) return null;
+    const items = [];
+    if (weapons) {
+      p.weapons.forEach((w, i) => items.push({ value: `w:${i}`, name: w.def.name, icon: w.def.icon, color: w.def.color, sprite: { kind: 'weapon', id: w.id }, verb: 'Eat' }));
+    }
+    if (passives) {
+      for (const [id] of p.passives) items.push({ value: `p:${id}`, name: PASSIVES[id].name, icon: PASSIVES[id].icon, color: PASSIVES[id].color, sprite: { kind: 'passive', id }, verb: 'Pour out' });
+    }
+    return { items, pick: this.feedPick };
+  }
+
+  /** Eat a weapon or pour out a passive: the first click asks, the second does it. */
+  feed(value) {
+    if (this.state !== 'levelup' || this.levelKind !== 'normal' || !this.feedView()) return;
+    if (performance.now() - this.levelUpOpenedAt < 250) return;
+    if (this.feedPick !== value) {
+      this.feedPick = value;
+      this.audio.play('select');
+      this.showLevelUpMenu();
+      return;
+    }
+    const p = this.player;
+    const [kind, id] = value.split(':');
+    if (kind === 'w') {
+      const w = p.weapons[Number(id)];
+      if (!w || p.weapons.length < 2) return;
+      p.eatWeapon(Number(id));
+      this.effects.text(p.x, p.y - 30, `${w.def.name} eaten`, '#b9a8ff', 15);
+    } else {
+      if (!p.passives.has(id) || p.passives.size < 2) return;
+      p.pourPassive(id);
+      this.effects.text(p.x, p.y - 30, `${PASSIVES[id].name} poured out`, '#b9a8ff', 15);
+    }
+    this.audio.play('chomp');
+    this.effects.burst(p.x, p.y, '#8c7ae6', 18, 160);
+    this.feedPick = null;
+    // What you carry changed, so the cards do too.
+    this.choices = this.rollCards();
+    this.levelUpOpenedAt = performance.now();
+    this.showLevelUpMenu();
   }
 
   pickUpgrade(index) {
@@ -1154,36 +1387,77 @@ export class Game {
       this.showLevelUpMenu();
       return;
     }
-    this.finishPick(choice);
+    const p = this.player;
+    const rule = this.levelUpRule();
+    const others = this.choices.filter((c, i) => i !== index);
+    this.takeCard(choice, choice.strength ?? 1);
+    if (rule) {
+      // Gorge (at full strength) or Nothing Wasted (at normal strength): the other cards too,
+      // if they can still be taken now that you have the first.
+      for (const c of others) {
+        const card = findUpgrade(p, c, (id) => this.canFindWeapon(id));
+        if (card) this.takeCard(card, rule === 'gorge' ? c.strength ?? 1 : 1);
+      }
+      p.counters.aftertaste = null;
+    } else {
+      // Devour: the cards you pass up are eaten. Aftertaste: the one you pass up comes back.
+      if (p.flags.devour && others.length) {
+        p.heal(10 * others.length);
+        this.effects.text(p.x, p.y - p.radius - 8, `+${10 * others.length}`, '#6bd968', 18);
+      }
+      p.counters.aftertaste = others.find((c) => c.kind !== 'heal') ?? null;
+    }
+    if (this.levelKind === 'normal') p.counters.levelUps = (p.counters.levelUps ?? 0) + 1;
+    this.finishPick(choice, true);
+  }
+
+  /** Take one card at `strength` (how many levels it's worth). */
+  takeCard(choice, strength) {
+    applyUpgrade(choice, this, strength);
+    if (choice.kind === 'weapon' && choice.isNew) this.onWeaponFound(choice.id);
+    if (choice.kind === 'weapon' || choice.kind === 'passive') this.player.counters.cardsTaken = (this.player.counters.cardsTaken ?? 0) + 1;
   }
 
   /** Trinket screen: put trinket offer `trinketIndex` on the weapon in slot `weaponIndex`. */
   attachTrinket(trinketIndex, weaponIndex) {
     if (this.state !== 'levelup' || this.levelKind !== 'trinket') return;
     if (performance.now() - this.levelUpOpenedAt < 250) return;
+    const p = this.player;
     const trinket = this.choices[trinketIndex];
-    const weapon = this.player.weapons[weaponIndex];
-    if (!trinket || !weapon || weapon.trinket) return; // empty slot, or it already holds one
+    if (!trinket) return;
+    // The slot after the weapon slots is the Hollow Diver's suit (Inner Shrine).
+    if (p.flags.innerShrine && weaponIndex === p.weaponSlots) {
+      if (p.shrine) return;
+      this.audio.play('select');
+      this.finishPick({ kind: 'socket', id: 'suit', trinket: trinket.id, color: trinket.color });
+      return;
+    }
+    const weapon = p.weapons[weaponIndex];
+    if (!weapon || p.freeSockets(weapon) === 0) return; // empty slot, or no room for another
     this.audio.play('select');
     this.finishPick({ kind: 'socket', id: weapon.id, trinket: trinket.id, color: trinket.color });
   }
 
-  /** Apply a chosen upgrade, talent or trinket, then show the next pending level-up or resume. */
-  finishPick(choice) {
-    applyUpgrade(choice, this);
-    if (choice.kind === 'weapon' && choice.isNew) this.onWeaponFound(choice.id);
+  /**
+   * Apply a chosen upgrade or trinket (unless `applied`: pickUpgrade already took it), then show
+   * the next pending level-up or resume.
+   */
+  finishPick(choice, applied = false) {
+    if (!applied) this.takeCard(choice, choice.strength ?? 1);
     this.trinketPick = null;
+    this.feedPick = null;
     this.levelQueue.shift();
     this.effects.burst(this.player.x, this.player.y, choice.color, 16, 180);
     if (this.levelQueue.length > 0) this.openLevelUp();
     else this.setState('playing');
   }
 
-  /** Swap the current talent offers for new ones (limited per dive). */
+  /** Swap the level-up cards for new ones (the Hollow Diver's Spit It Out; limited per dive). */
   reroll() {
-    if (this.state !== 'levelup' || this.levelKind !== 'talent' || this.rerolls <= 0) return;
+    if (this.state !== 'levelup' || this.levelKind !== 'normal' || this.rerolls <= 0) return;
     this.rerolls--;
-    this.choices = rollTalents(this.player, this.rng);
+    this.feedPick = null;
+    this.choices = this.rollCards();
     this.levelUpOpenedAt = performance.now();
     this.showLevelUpMenu();
   }
@@ -1205,7 +1479,7 @@ export class Game {
     const record = this.recordFor(this.level.id);
     this.newBest = !record.bestTime || this.time > record.bestTime;
     if (this.newBest) record.bestTime = this.time;
-    saveProgress(this.progress);
+    this.bankDive();
   }
 
   /** The final boss is dead: the horde scatters, something far below stirs, the depth is cleared. */
@@ -1232,7 +1506,138 @@ export class Game {
     const record = this.recordFor(this.level.id);
     record.cleared = true;
     record.bestClear = Math.min(record.bestClear ?? Infinity, this.time);
+    // The secret diver: clear a depth while carrying only one weapon the whole dive.
+    const p = this.player;
+    if (p.everCarried === 1 && p.eaten.length === 0 && !this.progress.secrets?.hollow) {
+      this.progress.secrets = { ...this.progress.secrets, hollow: true };
+      this.unlockedHero = 'hollow';
+    }
+    this.bankDive();
+  }
+
+  /**
+   * The dive is over (died, cleared or abandoned): the character's level gets every bit of XP
+   * collected, and each weapon gets what was collected while carrying it. Once per dive.
+   */
+  bankDive() {
+    const p = this.player;
+    if (!p || this.banked) return;
+    this.banked = true;
+    const weaponXp = {};
+    for (const w of [...p.weapons, ...p.eaten]) weaponXp[w.id] = w.diveXp;
+    this.diveResults = bankDive(this.progress, this.heroId, p.diveXp, weaponXp);
     saveProgress(this.progress);
+  }
+
+  // ---------------------------------------------------------------- talent trees
+
+  /** Open the talent screen (from the depth, game-over or cleared screen), on this diver's tree. */
+  openTalents() {
+    if (!['depths', 'gameover', 'cleared'].includes(this.state)) return;
+    this.talentsReturn = this.state;
+    this.talentTab = { kind: 'character', id: this.heroId };
+    this.setState('talents');
+  }
+
+  closeTalents() {
+    if (this.state === 'talents') this.setState(this.talentsReturn ?? 'depths');
+  }
+
+  /** Run a talent-screen change, save it, and redraw the screen. */
+  talentsAction(change, sound = null) {
+    if (this.state !== 'talents') return;
+    if (change() === false) return;
+    saveProgress(this.progress);
+    if (sound) this.audio.play(sound);
+    this.menus.showTalents(this.talentView());
+  }
+
+  /** Debug mode (F3): one more level for the tree on screen. */
+  debugLevelUp() {
+    if (!this.debug) return false;
+    const { kind, id } = this.talentTab;
+    const s = treeState(this.progress, kind, id);
+    if (s.level >= s.maxLevel) return false;
+    progressRecord(this.progress, kind, id).xp += s.need - s.into;
+    return true;
+  }
+
+  /** How many talent points are waiting to be spent: this diver's, plus every weapon's. */
+  unspentPoints() {
+    let free = treeState(this.progress, 'character', this.heroId).free;
+    for (const id of Object.keys(WEAPONS)) free += treeState(this.progress, 'weapon', id).free;
+    return free;
+  }
+
+  /** Everything the talent screen shows: the tabs, the open tree's nodes and its level. */
+  talentView() {
+    const { kind, id } = this.talentTab;
+    const state = treeState(this.progress, kind, id);
+    const tab = (k, tid, extra) => {
+      const s = treeState(this.progress, k, tid);
+      return { kind: k, id: tid, level: s.level, maxLevel: s.maxLevel, free: s.free, active: k === kind && tid === id, ...extra };
+    };
+    const nodes = state.tree.nodes.map((node) => {
+      const key = nodeKey(node);
+      const rank = nodeRank(node, state.alloc);
+      const max = nodeMax(node);
+      const check = canBuy(state, node);
+      const options = (node.id ? [node.id] : node.choice).map((tid) => {
+        const t = findTalent(tid);
+        const own = state.alloc[tid] ?? 0;
+        const ranks = t.ranks ?? 1;
+        return {
+          id: tid,
+          name: t.name,
+          icon: t.icon,
+          tier: t.tier,
+          color: TIER_COLORS[t.tier],
+          taken: own > 0,
+          ranks,
+          text: talentText(t, Math.max(1, own)),
+          next: own > 0 && own < ranks ? talentText(t, own + 1) : null,
+          tags: (t.tags ?? []).map((tag) => TAG_LABELS[tag] ?? tag),
+        };
+      });
+      let status = 'locked';
+      if (rank >= max) status = 'maxed';
+      else if (rank > 0) status = check.ok ? 'partial' : 'partial-locked';
+      else if (check.ok) status = 'open';
+      return { key, row: node.row, col: node.col, from: node.from ?? [], choice: Boolean(node.choice), options, rank, max, status, reason: rank >= max ? null : check.reason, refundReason: refundBlocked(state, key) };
+    });
+    const gates = Object.entries(state.tree.gates ?? {}).map(([row, points]) => ({
+      row: Number(row),
+      points,
+      met: nodes.filter((n) => n.row < Number(row)).reduce((sum, n) => sum + n.rank, 0) >= points,
+    }));
+    const owner = kind === 'character' ? HEROES[id] : WEAPONS[id];
+    return {
+      tabs: [
+        ...HERO_ORDER.filter((hid) => this.isHeroUnlocked(hid)).map((hid) => tab('character', hid, { name: HEROES[hid].name, hero: HEROES[hid] })),
+        ...Object.keys(WEAPONS).map((wid) => tab('weapon', wid, {
+          name: WEAPONS[wid].name,
+          icon: WEAPONS[wid].icon,
+          color: WEAPONS[wid].color,
+          locked: !this.isWeaponUnlocked(wid) && !(progressRecord(this.progress, 'weapon', wid).xp > 0),
+        })),
+      ],
+      head: {
+        kind,
+        name: owner.name,
+        role: kind === 'character' ? owner.role : 'Weapon mastery',
+        level: state.level,
+        maxLevel: state.maxLevel,
+        into: state.into,
+        need: state.need,
+        points: state.points,
+        spent: state.spent,
+        free: state.free,
+        maxPoints: state.tree.maxPoints,
+      },
+      nodes,
+      gates,
+      debug: this.debug,
+    };
   }
 
   runSummary() {
@@ -1249,25 +1654,37 @@ export class Game {
       seed: this.seed,
       bestTime: record.bestTime,
       bestClear: record.bestClear,
-      weapons: p.weapons.map((w) => ({ name: w.def.name, level: w.level, color: w.def.color, sprite: { kind: 'weapon', id: w.id } })),
+      weapons: [
+        ...p.weapons.map((w) => ({ name: w.def.name, level: w.level, color: w.def.color, sprite: { kind: 'weapon', id: w.id } })),
+        ...p.eaten.map((w) => ({ name: w.def.name, level: w.level, color: w.def.color, sprite: { kind: 'weapon', id: w.id }, note: 'Eaten' })),
+      ],
       passives: [...p.passives].map(([id, level]) => ({
         name: PASSIVES[id].name,
         level,
         color: PASSIVES[id].color,
         sprite: { kind: 'passive', id },
       })),
-      trinkets: p.weapons
-        .filter((w) => w.trinket)
-        .map((w) => ({
-          name: TRINKETS[w.trinket].name,
-          color: TRINKETS[w.trinket].color,
-          note: `on ${w.def.name}`,
-          sprite: { kind: 'trinket', id: w.trinket },
-        })),
-      talents: [...p.talents].map(([id, rank]) => {
+      trinkets: [
+        ...[...p.weapons, ...p.eaten].flatMap((w) =>
+          [w.trinket, w.trinket2].filter(Boolean).map((id) => ({
+            name: TRINKETS[id].name,
+            color: TRINKETS[id].color,
+            note: `on ${w.def.name}`,
+            sprite: { kind: 'trinket', id },
+          })),
+        ),
+        ...(p.shrine ? [{ name: TRINKETS[p.shrine.trinket].name, color: TRINKETS[p.shrine.trinket].color, note: 'in the suit', sprite: { kind: 'trinket', id: p.shrine.trinket } }] : []),
+      ],
+      talents: [...p.talents].filter(([, rank]) => rank > 0).map(([id, rank]) => {
         const t = findTalent(id);
         return { name: t.name, level: rank, color: TIER_COLORS[t.tier], note: (t.ranks ?? 1) > 1 ? `Rank ${rank}` : 'Talent' };
       }),
+      // What this dive's pearls did for the diver's and weapons' levels (once the dive is over).
+      progress: (this.diveResults ?? []).map((r) => ({
+        ...r,
+        name: r.kind === 'character' ? HEROES[r.id].name : WEAPONS[r.id].name,
+      })),
+      unspent: this.banked ? this.unspentPoints() : 0,
     };
   }
 
@@ -1313,6 +1730,8 @@ export class Game {
 
     this.theme.drawFloor(ctx, cam, this);
     for (const hz of this.hazards) hz.draw(ctx);
+    for (const reef of this.reefs) drawReef(ctx, reef, this.time);
+    for (const c of this.callIns) drawCallIn(ctx, c, this.time);
     if (!p.dead) {
       for (const w of p.weapons) {
         if (w.def.layer === 'under') w.draw(ctx, this);
@@ -1373,6 +1792,69 @@ function drawFence(ctx, links, time) {
   ctx.setLineDash([]);
   ctx.lineDashOffset = 0;
   ctx.lineCap = 'butt';
+}
+
+/** A coral outcrop: a knobbly pink-and-orange mound with a few branches. */
+function drawReef(ctx, r, time) {
+  const fade = Math.min(1, (r.until - time) / 0.5);
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, fade);
+  ctx.fillStyle = 'rgba(0, 25, 35, 0.25)';
+  ctx.beginPath();
+  ctx.ellipse(r.x + 4, r.y + r.radius * 0.6, r.radius, r.radius * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const lobes = 7;
+  ctx.fillStyle = '#e88aa5';
+  ctx.strokeStyle = 'rgba(110, 30, 60, 0.7)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i <= lobes * 2; i++) {
+    const a = (i / (lobes * 2)) * Math.PI * 2;
+    const k = i % 2 ? 0.82 : 1 + 0.06 * Math.sin(r.seed + i);
+    const x = r.x + Math.cos(a) * r.radius * k;
+    const y = r.y + Math.sin(a) * r.radius * k;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = '#f28a4b';
+  ctx.lineWidth = Math.max(2, r.radius * 0.14);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < 3; i++) {
+    const a = r.seed + i * 2.1;
+    ctx.moveTo(r.x + Math.cos(a) * r.radius * 0.2, r.y + Math.sin(a) * r.radius * 0.2);
+    ctx.lineTo(r.x + Math.cos(a) * r.radius * 0.7, r.y + Math.sin(a) * r.radius * 0.7);
+  }
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  ctx.restore();
+}
+
+/** Where a depth charge will land: a shrinking target ring, and the charge sinking toward it. */
+function drawCallIn(ctx, c, time) {
+  const k = Math.min(1, (time - c.start) / Math.max(0.01, c.at - c.start)); // 0 → 1 as it sinks
+  ctx.strokeStyle = `rgba(255, 179, 71, ${0.35 + 0.4 * k})`;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, c.radius * (1.2 - 0.2 * k), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const y = c.y - 60 * (1 - k);
+  ctx.fillStyle = '#3b4650';
+  ctx.strokeStyle = '#11181e';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(c.x - 6, y - 8, 12, 16, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = Math.floor(time * 8) % 2 ? '#ff6b6b' : '#ffd166';
+  ctx.beginPath();
+  ctx.arc(c.x, y - 9, 2, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function interpolate(entity, a) {

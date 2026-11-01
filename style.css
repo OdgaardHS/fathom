@@ -860,6 +860,102 @@ kbd {
   color: var(--text);
 }
 
+/* ---------- The Hollow Diver ---------- */
+
+/* How much stronger a card is */
+.card-strength {
+  align-self: start;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #e3dbff;
+  background: rgba(140, 122, 230, 0.28);
+  border: 1px solid rgba(160, 142, 255, 0.55);
+  border-radius: 999px;
+}
+
+.card-strength.aftertaste {
+  color: #fff1c9;
+  background: rgba(230, 170, 80, 0.26);
+  border-color: rgba(255, 200, 110, 0.6);
+}
+
+/* Twin Sockets: two trinkets under one weapon */
+.slot-socket.twin {
+  grid-auto-flow: column;
+  gap: 4px;
+  width: 84px;
+}
+
+.slot-socket.twin img {
+  width: 30px;
+  height: 30px;
+}
+
+/* Inner Shrine: the suit's own socket, after the weapons */
+.slot.suit .slot-weapon {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.03) 50%, rgba(0, 0, 0, 0.16)), rgba(98, 76, 170, 0.8);
+  border-color: rgba(24, 14, 52, 0.95);
+}
+
+.mini-portrait {
+  width: 40px;
+  height: 40px;
+}
+
+/* Hollow Out / Pour Out: what the suit can eat */
+.feed-items {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.feed-item {
+  --accent: var(--primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.feed-item:hover {
+  border-color: var(--accent);
+}
+
+.feed-item.asking {
+  color: #fff;
+  background: rgba(140, 122, 230, 0.3);
+  border-color: #a99bff;
+}
+
+.feed-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.feed-icon img {
+  width: 26px;
+  height: 26px;
+}
+
+/* A secret diver on the diver select: a dark shape, nothing else */
+.hero-card.locked-hero {
+  opacity: 0.55;
+}
+
 /* The trinket following the pointer while you drag it */
 .trinket-ghost {
   --accent: var(--primary);
@@ -886,6 +982,496 @@ kbd {
 @keyframes socket-glow {
   to {
     box-shadow: 0 0 0 2px var(--gem), 0 0 4px var(--gem);
+  }
+}
+
+/* ---------- Talent trees (between dives) ---------- */
+
+.talents-panel {
+  max-width: 1000px;
+}
+
+.talent-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 18px;
+  margin-top: 16px;
+  text-align: left;
+}
+
+.talent-tabs {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  max-height: 560px;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.talent-tab-group {
+  display: grid;
+  gap: 4px;
+}
+
+.talent-tab-title {
+  margin: 0 0 2px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.talent-tab {
+  --accent: var(--primary);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.talent-tab:hover {
+  background: var(--surface-3);
+}
+
+.talent-tab.active {
+  background: var(--surface-3);
+  border-color: var(--accent);
+}
+
+.talent-tab.locked {
+  opacity: 0.45;
+}
+
+.tab-pic {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+}
+
+.tab-pic.hero-portrait {
+  border-width: 1.5px;
+}
+
+.tab-icon.has-sprite {
+  display: grid;
+  place-items: center;
+  background: rgba(56, 78, 160, 0.8);
+  border: 1.5px solid rgba(14, 20, 58, 0.95);
+  border-radius: 8px;
+}
+
+.tab-icon img {
+  width: 28px;
+  height: 28px;
+}
+
+.tab-names {
+  display: grid;
+  min-width: 0;
+}
+
+.tab-name {
+  overflow: hidden;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tab-level {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.tab-points {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 5px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #03222a;
+  background: var(--gold);
+  border-radius: 999px;
+}
+
+.talent-main {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.talent-head {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.talent-head-name {
+  display: grid;
+}
+
+.talent-head-name b {
+  font-size: 1.1rem;
+}
+
+.talent-head-name span,
+.talent-xp {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.talent-head-level {
+  display: grid;
+  gap: 4px;
+}
+
+.talent-level {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.xp-bar {
+  height: 6px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 999px;
+}
+
+.xp-fill {
+  display: block;
+  height: 100%;
+  background: #8ff0ff;
+}
+
+.talent-points {
+  display: grid;
+  justify-items: center;
+  min-width: 96px;
+  color: var(--muted);
+}
+
+.talent-points b {
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--text);
+}
+
+.talent-points.has-free b {
+  color: var(--gold);
+}
+
+.talent-points span {
+  font-size: 0.72rem;
+}
+
+.talent-points small {
+  font-size: 0.66rem;
+}
+
+.talent-tree {
+  display: grid;
+  place-items: center;
+  padding: 10px 0;
+  overflow-x: auto;
+  background: radial-gradient(ellipse at center, rgba(22, 70, 90, 0.35), transparent 70%), var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.tree-canvas {
+  position: relative;
+}
+
+.tree-lines {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.tree-edge {
+  stroke: rgba(160, 200, 210, 0.22);
+  stroke-width: 3;
+}
+
+.tree-edge.open {
+  stroke: rgba(160, 240, 200, 0.5);
+}
+
+.tree-edge.taken {
+  stroke: var(--gold);
+}
+
+.tree-gate {
+  stroke: rgba(255, 209, 102, 0.35);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 6;
+}
+
+.tree-gate.met {
+  stroke: rgba(160, 240, 200, 0.3);
+}
+
+.tree-gate-label {
+  position: absolute;
+  right: 4px;
+  padding: 0 6px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: var(--surface);
+  border-radius: 6px;
+}
+
+.tree-gate-label.met {
+  color: #9ef0c5;
+}
+
+/* A talent: a rounded square with its two-letter code, colored by tier (capstones are round) */
+.talent-node {
+  --accent: var(--gold);
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 2px solid rgba(160, 200, 210, 0.25);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 100ms, box-shadow 120ms, border-color 120ms;
+}
+
+.talent-single {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.talent-single:hover {
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+.talent-choice .talent-node:hover {
+  transform: scale(1.08);
+}
+
+.talent-node.tier-3 {
+  border-radius: 50%;
+}
+
+.talent-code {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.talent-rank {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  padding: 1px 5px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  color: var(--text);
+  background: #071a22;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* locked: dim; open: green outline; partly or fully learned: lit in the talent's color */
+.talent-node.status-locked,
+.status-locked .talent-node {
+  opacity: 0.45;
+  filter: grayscale(0.7);
+}
+
+.talent-node.status-open,
+.status-open .talent-node {
+  border-color: #6ee7a8;
+  box-shadow: 0 0 10px rgba(110, 231, 168, 0.35);
+}
+
+.talent-node.status-partial,
+.talent-node.status-partial-locked {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
+}
+
+.talent-node.status-maxed,
+.talent-node.taken {
+  color: #1b1405;
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 60%, #fff);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* A choice node: its options side by side in one frame */
+.talent-choice {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px dashed rgba(229, 153, 247, 0.45);
+  border-radius: 16px;
+  transform: translate(-50%, -50%);
+}
+
+.talent-choice .talent-node {
+  width: 46px;
+  height: 46px;
+}
+
+.talent-choice .talent-node.other {
+  opacity: 0.5;
+}
+
+.talent-info {
+  min-height: 110px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.talent-info-title {
+  --accent: var(--gold);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.talent-info-title b {
+  font-size: 1rem;
+  color: var(--accent);
+}
+
+.talent-info-rank {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.talent-info-text {
+  margin: 6px 0 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.talent-info-next,
+.talent-info-note {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.talent-info-next {
+  color: #9ef0c5;
+}
+
+.talent-info .card-tags {
+  margin: 8px 0 0;
+}
+
+/* After a dive: what levelled up */
+.progress-lines {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+}
+
+.progress-lines:empty {
+  display: none;
+}
+
+.progress-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 10px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.progress-line b {
+  color: var(--text);
+}
+
+.progress-up {
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.btn.primary-soft {
+  color: var(--gold);
+  border-color: rgba(242, 196, 109, 0.6);
+}
+
+@media (max-width: 760px) {
+  .talent-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .talent-tabs {
+    grid-auto-flow: column;
+    max-height: none;
+    overflow-x: auto;
+  }
+
+  .talent-tab-group {
+    grid-auto-flow: column;
+    align-items: center;
+  }
+
+  /* just the pictures (with their points badge) on small screens; names are in the tooltip */
+  .talent-tab-title,
+  .tab-names {
+    display: none;
+  }
+
+  .talent-tab {
+    padding: 4px;
+  }
+
+  .tab-points {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 16px;
+    height: 16px;
+    font-size: 0.65rem;
+  }
+
+  .talent-head {
+    grid-template-columns: 1fr auto;
+  }
+
+  .talent-head-level {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 }
 

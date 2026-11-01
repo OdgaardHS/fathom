@@ -105,6 +105,29 @@ export class Pickup {
         break;
 
       case 'chest': {
+        if (this.supply) {
+          // The Captain's supply crate: a slatted wooden crate on a little float
+          ctx.fillStyle = 'rgba(255, 209, 102, 0.18)';
+          ctx.beginPath();
+          ctx.arc(x, y, 22, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = '#9a6b34';
+          ctx.strokeStyle = '#4a3014';
+          ctx.lineWidth = 2;
+          ctx.fillRect(x - 11, y - 11, 22, 22);
+          ctx.strokeRect(x - 11, y - 11, 22, 22);
+          ctx.beginPath();
+          ctx.moveTo(x - 11, y - 11);
+          ctx.lineTo(x + 11, y + 11);
+          ctx.moveTo(x + 11, y - 11);
+          ctx.lineTo(x - 11, y + 11);
+          ctx.stroke();
+          ctx.fillStyle = '#ff6b4a';
+          ctx.beginPath();
+          ctx.arc(x, y - 15, 4, 0, TAU);
+          ctx.fill();
+          break;
+        }
         // Trinket chests glow sea-glass blue and carry a gem on the lid.
         const pulse = 0.5 + 0.5 * Math.sin(game.time * 5);
         const glow = this.trinket ? '127, 200, 255' : '255, 209, 102';

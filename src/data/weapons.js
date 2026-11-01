@@ -2,7 +2,7 @@ import { TAU, dist2 } from '../core/math.js';
 import { SOURCES } from '../entities/projectile.js';
 import { drawStarfish } from '../render/sprites.js';
 import { WEAPON_TALENTS } from './talents.js';
-import { UNDERTOW_RETURN } from './trinkets.js';
+import { UNDERTOW_RETURN, hasTrinket } from './trinkets.js';
 import { bubbles } from './weapons/bubbles.js';
 import { eel } from './weapons/eel.js';
 import { eye } from './weapons/eye.js';
@@ -426,7 +426,7 @@ export const WEAPONS = {
       // A bigger pulse grows in area, not radius: "double size" doubles the area it covers.
       const size = Math.sqrt(power.size);
       const stun = f.stunPulse && st.pulses % 3 === 0;
-      const undertow = w.trinket === 'undertowStone';
+      const undertow = hasTrinket(w, 'undertowStone');
       const radius = s.radius * p.stats.area * size;
       if (f.shockwave) {
         // With Undertow Stone the wave rolls back in once it reaches full size (see updateWaves).

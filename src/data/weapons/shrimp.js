@@ -1,6 +1,6 @@
 import { TAU } from '../../core/math.js';
 import { SOURCES } from '../../entities/projectile.js';
-import { UNDERTOW_RETURN } from '../trinkets.js';
+import { UNDERTOW_RETURN, hasTrinket } from '../trinkets.js';
 import { WEAPON_TALENTS } from '../talents.js';
 import { distToSegment, enemiesWithin, nearestEnemies } from './common.js';
 
@@ -137,11 +137,11 @@ function burst(w, game, x, y, damage, size, color, { child = false, implode = fa
   // Sonic Boom: the shock also tears along the bubble's path.
   if (f.sonicBoom && originX !== undefined) sonicBoom(game, originX, originY, x, y, damage * BOOM_SHARE, BOOM_WIDTH * p.stats.area, hit);
   // Undertow Stone: the blast collapses back in, pulling enemies with it.
-  if (w.trinket === 'undertowStone') {
+  if (hasTrinket(w, 'undertowStone')) {
     st.pending.push({ at: game.time + IMPLODE_DELAY, x, y, damage: damage * UNDERTOW_RETURN, size, color, implode: true });
   }
   // Split Coral: three smaller blasts land on the nearest enemies around it.
-  if (w.trinket === 'splitCoral') {
+  if (hasTrinket(w, 'splitCoral')) {
     const near = nearestEnemies(game, x, y, SPLIT_REACH).filter((e) => !hit.includes(e));
     for (let i = 0; i < 3; i++) {
       const t = near[i];

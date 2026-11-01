@@ -1,6 +1,6 @@
 import { TAU } from '../../core/math.js';
 import { SOURCES } from '../../entities/projectile.js';
-import { UNDERTOW_RETURN } from '../trinkets.js';
+import { UNDERTOW_RETURN, hasTrinket } from '../trinkets.js';
 import { WEAPON_TALENTS } from '../talents.js';
 import { angleDiff, enemiesWithin } from './common.js';
 
@@ -159,7 +159,7 @@ function attack(w, game, dir, power) {
     st.queue.push({ at: game.time + i * gap, angle, mult, size: power.size, color, first: i === 0, last: i === lanes.length - 1 });
   });
   // Undertow Stone: the trident sweeps back across the same lanes, weaker.
-  if (w.trinket === 'undertowStone') {
+  if (hasTrinket(w, 'undertowStone')) {
     const back = [...lanes].reverse();
     const start = game.time + lanes.length * gap + 0.06;
     back.forEach((angle, i) => {

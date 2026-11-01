@@ -457,6 +457,28 @@ const SOUNDS = {
       a.tone({ at, type: 'sawtooth', freq: 80 + heat * 120, dur: 0.3, gain: 0.015 + heat * 0.025, filter: 900 });
     },
   },
+  song: {
+    gap: 1,
+    play(a, at) {
+      // a squeezebox flourish: a quick reedy arpeggio as Jory starts a new song
+      const notes = [0, 4, 7, 12];
+      notes.forEach((n, i) => {
+        const f = semis(220, n);
+        a.tone({ at: at + i * 0.07, type: 'square', freq: f, dur: 0.22, attack: 0.02, gain: 0.035, filter: 1400, verb: 0.3 });
+        a.tone({ at: at + i * 0.07, type: 'sawtooth', freq: f * 1.005, dur: 0.22, attack: 0.02, gain: 0.02, filter: 1200 });
+      });
+    },
+  },
+  coralBreak: {
+    gap: 0.08,
+    important: true,
+    play(a, at) {
+      // a coral plate cracking off: a brittle crunch and a hollow knock
+      a.noise({ at, dur: 0.09, type: 'highpass', freq: 2200, gain: 0.2 });
+      a.noise({ at: at + 0.02, dur: 0.12, freq: 900, q: 2, gain: 0.12 });
+      a.tone({ at, freq: vary(320), to: 180, dur: 0.1, gain: 0.1 });
+    },
+  },
   overcharge: {
     gap: 0.2,
     important: true,

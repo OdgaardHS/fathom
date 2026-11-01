@@ -470,20 +470,373 @@ export const SPRITES = {
   },
 };
 
-const DEFAULT_DIVER = { suit: '#c9893a', helmet: '#d4a94f', trim: '#6e4f1a', gear: 'salvager' };
+const DEFAULT_DIVER = { suit: '#2f5f7f', helmet: '#f2a541', trim: '#7a4a12', gear: 'pilot' };
 
 /**
- * The player: a diver seen from above, facing +x. Colors come from the character's palette,
- * and `palette.gear` picks their kit so characters are easy to tell apart:
- *   salvager  brass helmet with portholes, a rope coil and grappling hook over the
- *             shoulder, a salvage net with finds on the back (Mara)
+ * Each character's kit, drawn around the shared diver body (facing +x): `back` goes under the
+ * suit, `front` on top of it. Pick one with `palette.gear`:
  *   pilot     modern helmet with a dark visor, a radio antenna, a mini drone docked on the
  *             back and a controller held out in front (Otto)
+ *   captain   officer's coat tails and gold epaulettes, a peaked helmet with an anchor badge,
+ *             and a radio handset on a coiled cord (Captain Isolde Crane)
+ *   shanty    brass helmet, a big red beard, a knit cap with a bobble and a squeezebox held
+ *             out in front (Old Jory)
+ *   coral     a weathered helmet half grown over with coral, a starfish on top and anemones
+ *             waving from the back (Coralline)
+ *   crew      a smaller diver with an orange visor helmet and a red knit cap (the Captain's crewmate)
+ *   hollow    an old copper suit gone green with no air tank, empty gloves hanging from loose
+ *             cuffs, and a helmet whose front window is missing: inside, only a deep-blue dark
+ *             with specks drifting in it (the Hollow Diver)
+ */
+const KITS = {
+  pilot: {
+    front(ctx, r, pal, time) {
+      drawDockedDrone(ctx, r, time);
+      drawController(ctx, r, pal, time);
+      drawVisorHelmet(ctx, r, pal, time);
+      drawAntenna(ctx, r, time);
+    },
+  },
+  captain: {
+    back(ctx, r, pal) {
+      // coat tails flaring out behind
+      ctx.fillStyle = pal.coat;
+      ctx.strokeStyle = 'rgba(5, 10, 25, 0.7)';
+      ctx.lineWidth = 1.5;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.4, side * r * 0.2);
+        ctx.lineTo(-r * 1.25, side * r * 0.72);
+        ctx.lineTo(-r * 1.05, side * r * 0.12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    },
+    front(ctx, r, pal, time) {
+      // gold epaulettes with fringe
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = '#e9c46a';
+        ctx.strokeStyle = '#7a5a12';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(-r * 0.32, side * r * 0.72 - r * 0.13, r * 0.42, r * 0.26, r * 0.08);
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = '#f5d98c';
+        ctx.beginPath();
+        for (let k = 0; k < 4; k++) {
+          const x = -r * 0.28 + k * r * 0.11;
+          ctx.moveTo(x, side * r * 0.85);
+          ctx.lineTo(x, side * r * 0.98);
+        }
+        ctx.stroke();
+      }
+      // radio handset held up on a coiled cord
+      ctx.strokeStyle = '#1b1b1b';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (let k = 0; k <= 10; k++) {
+        const t = k / 10;
+        const x = -r * 0.5 + t * r * 1.15;
+        const y = -r * 0.5 - t * r * 0.35 + Math.sin(t * 30) * r * 0.06;
+        if (k === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = pal.coat;
+      ctx.lineWidth = r * 0.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(r * 0.05, -r * 0.62);
+      ctx.lineTo(r * 0.62, -r * 0.82);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+      ctx.fillStyle = '#26282c';
+      ctx.beginPath();
+      ctx.roundRect(r * 0.6, -r * 1.0, r * 0.32, r * 0.24, r * 0.08);
+      ctx.fill();
+      // helmet: navy dome, gold band, peaked brim at the front, anchor badge
+      ctx.fillStyle = pal.helmet;
+      ctx.strokeStyle = pal.trim;
+      ctx.lineWidth = 2.2;
+      circle(ctx, r * 0.15, 0, r * 0.62);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = '#e9c46a';
+      ctx.lineWidth = r * 0.1;
+      circle(ctx, r * 0.15, 0, r * 0.46);
+      ctx.stroke();
+      ctx.fillStyle = '#111a2e';
+      ctx.beginPath();
+      ctx.arc(r * 0.15, 0, r * 0.66, -0.9, 0.9);
+      ctx.arc(r * 0.15, 0, r * 0.4, 0.9, -0.9, true);
+      ctx.closePath();
+      ctx.fill();
+      // window
+      ctx.fillStyle = '#86d8e8';
+      circle(ctx, r * 0.5, 0, r * 0.2);
+      ctx.fill();
+      // anchor badge on the crown
+      ctx.strokeStyle = '#ffd98a';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.1, -r * 0.16);
+      ctx.lineTo(-r * 0.1, r * 0.16);
+      ctx.moveTo(-r * 0.2, -r * 0.08);
+      ctx.lineTo(r * 0.0, -r * 0.08);
+      ctx.moveTo(-r * 0.24, r * 0.06);
+      ctx.quadraticCurveTo(-r * 0.1, r * 0.26, r * 0.04, r * 0.06);
+      ctx.stroke();
+      // a light blinking on the radio while she talks
+      if (Math.floor(time * 1.5) % 3 === 0) {
+        ctx.fillStyle = '#ff6b6b';
+        circle(ctx, r * 0.9, -r * 0.9, r * 0.06);
+        ctx.fill();
+      }
+    },
+  },
+  shanty: {
+    front(ctx, r, pal, time) {
+      // arms and the squeezebox, breathing in and out
+      const squeeze = 0.85 + 0.15 * Math.sin(time * 4);
+      ctx.strokeStyle = pal.suit;
+      ctx.lineWidth = r * 0.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (const side of [-1, 1]) {
+        ctx.moveTo(r * 0.05, side * r * 0.62);
+        ctx.lineTo(r * 0.72, side * r * 0.62 * squeeze);
+      }
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+      const half = r * 0.62 * squeeze;
+      ctx.fillStyle = '#c0392b';
+      ctx.fillRect(r * 0.66, -half, r * 0.34, half * 2);
+      ctx.strokeStyle = '#f2e6c8';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let k = 1; k < 6; k++) {
+        const y = -half + (k / 6) * half * 2;
+        ctx.moveTo(r * 0.66, y);
+        ctx.lineTo(r * 1.0, y);
+      }
+      ctx.stroke();
+      ctx.fillStyle = '#7a4a1e';
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.roundRect(r * 0.62, side * half - r * 0.09 - (side > 0 ? 0 : 0), r * 0.42, r * 0.18, r * 0.05);
+        ctx.fill();
+      }
+      drawBrassHelmet(ctx, r, pal);
+      // red beard spilling out under the front window
+      ctx.fillStyle = '#c4572c';
+      for (const [x, y, s] of [[0.62, 0.3, 0.16], [0.7, 0.14, 0.14], [0.72, -0.05, 0.13], [0.62, -0.24, 0.15]]) {
+        circle(ctx, r * x, r * y, r * s);
+        ctx.fill();
+      }
+      // knit cap with a bobble, on the back of the helmet
+      ctx.fillStyle = '#b8302a';
+      ctx.beginPath();
+      ctx.arc(r * 0.15, 0, r * 0.66, Math.PI * 0.78, Math.PI * 1.22);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(r * 0.15, 0, r * 0.56, Math.PI * 0.82, Math.PI * 1.18);
+      ctx.stroke();
+      ctx.fillStyle = '#f2e6c8';
+      circle(ctx, -r * 0.55, 0, r * 0.13);
+      ctx.fill();
+    },
+  },
+  coral: {
+    back(ctx, r, pal, time) {
+      // anemone tendrils waving from the back
+      ctx.lineCap = 'round';
+      ctx.lineWidth = r * 0.12;
+      for (let i = 0; i < 5; i++) {
+        const y = (i - 2) * r * 0.22;
+        const sway = Math.sin(time * 3 + i) * r * 0.15;
+        ctx.strokeStyle = i % 2 ? '#e57fb0' : '#b689e0';
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.7, y);
+        ctx.quadraticCurveTo(-r * 1.05, y + sway, -r * 1.3, y + sway * 1.6);
+        ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
+    },
+    front(ctx, r, pal) {
+      // shoulder growths: branching orange coral on one side, pink brain coral on the other
+      ctx.strokeStyle = '#f28a4b';
+      ctx.lineWidth = r * 0.12;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.15, r * 0.62);
+      ctx.lineTo(-r * 0.05, r * 0.95);
+      ctx.moveTo(-r * 0.08, r * 0.78);
+      ctx.lineTo(-r * 0.3, r * 0.98);
+      ctx.moveTo(-r * 0.25, r * 0.6);
+      ctx.lineTo(-r * 0.45, r * 0.82);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+      ctx.fillStyle = '#e88aa5';
+      ctx.strokeStyle = 'rgba(120, 30, 60, 0.6)';
+      ctx.lineWidth = 1;
+      circle(ctx, -r * 0.2, -r * 0.7, r * 0.26);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.36, -r * 0.7);
+      ctx.quadraticCurveTo(-r * 0.2, -r * 0.6, -r * 0.05, -r * 0.74);
+      ctx.moveTo(-r * 0.32, -r * 0.8);
+      ctx.quadraticCurveTo(-r * 0.2, -r * 0.88, -r * 0.08, -r * 0.82);
+      ctx.stroke();
+      // weathered helmet, half grown over
+      ctx.fillStyle = pal.helmet;
+      ctx.strokeStyle = pal.trim;
+      ctx.lineWidth = 2.2;
+      circle(ctx, r * 0.15, 0, r * 0.62);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#d97b9b';
+      ctx.beginPath();
+      ctx.arc(r * 0.15, 0, r * 0.62, Math.PI * 0.55, Math.PI * 1.15);
+      ctx.lineTo(r * 0.1, -r * 0.1);
+      ctx.closePath();
+      ctx.fill();
+      for (const [x, y] of [[-0.25, 0.35], [-0.32, 0.05], [-0.1, 0.5]]) {
+        ctx.fillStyle = '#f5b6c8';
+        circle(ctx, r * x, r * y, r * 0.07);
+        ctx.fill();
+      }
+      // greenish glow behind the window
+      ctx.fillStyle = '#8fe3c0';
+      circle(ctx, r * 0.5, 0, r * 0.22);
+      ctx.fill();
+      ctx.strokeStyle = pal.trim;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // a starfish clinging to the top
+      star(ctx, r * 0.15, -r * 0.42, r * 0.2, r * 0.08, 5, 0.4);
+      ctx.fillStyle = '#ff9f5a';
+      ctx.fill();
+    },
+  },
+  hollow: {
+    back(ctx, r, pal, time) {
+      // loose straps trailing where the air tank should be
+      ctx.strokeStyle = '#a5844f';
+      ctx.lineWidth = r * 0.12;
+      ctx.lineCap = 'round';
+      for (const side of [-1, 1]) {
+        const sway = Math.sin(time * 2.2 + side) * r * 0.12;
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.55, side * r * 0.3);
+        ctx.quadraticCurveTo(-r * 0.95, side * r * 0.36 + sway, -r * 1.2, side * r * 0.24 + sway * 1.5);
+        ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
+    },
+    front(ctx, r, pal, time) {
+      // green patches of verdigris on the old copper suit
+      ctx.fillStyle = 'rgba(140, 214, 170, 0.35)';
+      for (const [x, y, s] of [[-0.45, 0.35, 0.16], [-0.6, -0.2, 0.12], [-0.2, 0.6, 0.1]]) {
+        circle(ctx, r * x, r * y, r * s);
+        ctx.fill();
+      }
+      // empty gloves hanging from loose cuffs, drifting a little
+      for (const side of [-1, 1]) {
+        const drift = Math.sin(time * 1.6 + side * 1.3) * r * 0.06;
+        const gx = r * 0.55;
+        const gy = side * (r * 0.78 + drift);
+        ctx.strokeStyle = pal.suit;
+        ctx.lineWidth = r * 0.16;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(r * 0.05, side * r * 0.6);
+        ctx.lineTo(gx - r * 0.12, gy);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+        ctx.fillStyle = '#c9b48a'; // limp canvas gloves
+        ctx.strokeStyle = 'rgba(40, 30, 15, 0.7)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(gx, gy, r * 0.17, r * 0.12, side * 0.4, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+      }
+      // the old copper helmet, gone green, with rivets
+      ctx.fillStyle = pal.helmet;
+      ctx.strokeStyle = pal.trim;
+      ctx.lineWidth = 2.4;
+      circle(ctx, r * 0.15, 0, r * 0.64);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(190, 120, 70, 0.45)'; // some copper still showing through
+      ctx.beginPath();
+      ctx.arc(r * 0.15, 0, r * 0.64, Math.PI * 0.8, Math.PI * 1.3);
+      ctx.lineTo(r * 0.0, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = pal.trim;
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * TAU + 0.5;
+        circle(ctx, r * 0.15 + Math.cos(a) * r * 0.54, Math.sin(a) * r * 0.54, r * 0.045);
+        ctx.fill();
+      }
+      // the front window is gone: an open rim, and nothing inside but the dark
+      const wx = r * 0.46;
+      const wr = r * 0.33;
+      const dark = ctx.createRadialGradient(wx, 0, 0, wx, 0, wr);
+      dark.addColorStop(0, '#02030a');
+      dark.addColorStop(0.75, '#0b1033');
+      dark.addColorStop(1, '#1d2560');
+      ctx.fillStyle = dark;
+      circle(ctx, wx, 0, wr);
+      ctx.fill();
+      ctx.strokeStyle = '#a07a46'; // the brass rim where the glass used to sit
+      ctx.lineWidth = r * 0.08;
+      ctx.stroke();
+      // specks drifting in the dark, like marine snow
+      ctx.save();
+      circle(ctx, wx, 0, wr * 0.9);
+      ctx.clip();
+      ctx.fillStyle = '#c9d8ff';
+      for (let i = 0; i < 6; i++) {
+        const t = (time * 0.25 + i / 6) % 1;
+        const x = wx + Math.sin(i * 2.3 + time * 0.6) * wr * 0.55;
+        const y = (t - 0.5) * wr * 1.8;
+        ctx.globalAlpha = 0.25 + 0.5 * Math.sin(t * Math.PI);
+        circle(ctx, x, y, r * 0.035);
+        ctx.fill();
+      }
+      ctx.restore();
+    },
+  },
+  crew: {
+    front(ctx, r, pal, time) {
+      drawVisorHelmet(ctx, r, pal, time);
+      // red knit cap on the back of the helmet
+      ctx.fillStyle = '#c0392b';
+      ctx.beginPath();
+      ctx.arc(r * 0.15, 0, r * 0.64, Math.PI * 0.7, Math.PI * 1.3);
+      ctx.closePath();
+      ctx.fill();
+    },
+  },
+};
+
+/**
+ * The player (and the Captain's crewmate): a diver seen from above, facing +x. Colors come from
+ * the character's palette, and `palette.gear` picks their kit (see KITS) so characters are easy
+ * to tell apart.
  */
 export function drawDiver(ctx, p, time) {
   const r = p.radius;
   const pal = p.hero?.palette ?? DEFAULT_DIVER;
-  const pilot = pal.gear === 'pilot';
+  const kit = KITS[pal.gear] ?? KITS.pilot;
   ctx.save();
   ctx.translate(p.rx, p.ry);
   ctx.rotate(Math.atan2(p.facingY, p.facingX));
@@ -506,15 +859,17 @@ export function drawDiver(ctx, p, time) {
     ctx.restore();
   }
 
-  // Air tank on the back
-  ctx.fillStyle = '#9aa7b0';
-  ctx.strokeStyle = 'rgba(20, 30, 40, 0.5)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.roundRect(-r * 1.0, -r * 0.42, r * 0.7, r * 0.84, r * 0.25);
-  ctx.fill();
-  ctx.stroke();
-  if (!pilot) drawSalvageNet(ctx, r);
+  // Air tank on the back (the Hollow Diver has none: it doesn't breathe)
+  if (pal.tank !== false) {
+    ctx.fillStyle = '#9aa7b0';
+    ctx.strokeStyle = 'rgba(20, 30, 40, 0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(-r * 1.0, -r * 0.42, r * 0.7, r * 0.84, r * 0.25);
+    ctx.fill();
+    ctx.stroke();
+  }
+  kit.back?.(ctx, r, pal, time);
 
   // Diving suit
   ctx.fillStyle = p.hurtFlash > 0 ? '#ff8a8a' : pal.suit;
@@ -524,19 +879,11 @@ export function drawDiver(ctx, p, time) {
   ctx.fill();
   ctx.stroke();
 
-  if (pilot) {
-    drawDockedDrone(ctx, r, time);
-    drawController(ctx, r, pal, time);
-    drawVisorHelmet(ctx, r, pal, time);
-    drawAntenna(ctx, r, time);
-  } else {
-    drawRopeCoil(ctx, r, pal);
-    drawBrassHelmet(ctx, r, pal);
-  }
+  kit.front?.(ctx, r, pal, time);
   ctx.restore();
 }
 
-/** Mara's classic brass helmet: round, with side portholes and a big front window. */
+/** A classic brass helmet: round, with side portholes and a big caged front window (Old Jory). */
 function drawBrassHelmet(ctx, r, pal) {
   ctx.fillStyle = pal.helmet;
   ctx.strokeStyle = pal.trim;
@@ -576,82 +923,6 @@ function drawBrassHelmet(ctx, r, pal) {
   ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
   circle(ctx, r * 0.6, -r * 0.12, r * 0.07);
   ctx.fill();
-}
-
-/** Mara: a coil of rope with a grappling hook slung over one shoulder, on a strap. */
-function drawRopeCoil(ctx, r, pal) {
-  // strap across the chest
-  ctx.strokeStyle = pal.trim;
-  ctx.lineWidth = r * 0.14;
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.55, r * 0.55);
-  ctx.lineTo(-r * 0.05, -r * 0.7);
-  ctx.stroke();
-  // the coil
-  const cx = -r * 0.42;
-  const cy = -r * 0.66;
-  ctx.strokeStyle = 'rgba(40, 25, 10, 0.8)';
-  ctx.lineWidth = r * 0.22;
-  circle(ctx, cx, cy, r * 0.27);
-  ctx.stroke();
-  ctx.strokeStyle = '#e3cf98';
-  ctx.lineWidth = r * 0.14;
-  circle(ctx, cx, cy, r * 0.27);
-  ctx.stroke();
-  ctx.strokeStyle = '#b89a5c';
-  ctx.lineWidth = 1;
-  circle(ctx, cx, cy, r * 0.2);
-  ctx.stroke();
-  // grappling hook hanging off it
-  const hx = cx - r * 0.38;
-  const hy = cy - r * 0.28;
-  ctx.strokeStyle = '#cfd5db';
-  ctx.lineWidth = r * 0.09;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(cx - r * 0.2, cy - r * 0.1);
-  ctx.lineTo(hx, hy);
-  for (const a of [-0.9, 0.4, 1.7]) {
-    ctx.moveTo(hx, hy);
-    ctx.lineTo(hx + Math.cos(a + Math.PI) * r * 0.2, hy + Math.sin(a + Math.PI) * r * 0.2);
-  }
-  ctx.stroke();
-  ctx.lineCap = 'butt';
-}
-
-/** Mara: a mesh salvage net on her back with gold and a pearl poking out. */
-function drawSalvageNet(ctx, r) {
-  const x = -r * 0.62;
-  const y = r * 0.6;
-  ctx.fillStyle = '#7a5a2c';
-  ctx.strokeStyle = 'rgba(30, 18, 6, 0.8)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.ellipse(x, y, r * 0.36, r * 0.3, 0.3, 0, TAU);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = '#ffd166';
-  circle(ctx, x - r * 0.1, y - r * 0.05, r * 0.11);
-  ctx.fill();
-  ctx.fillStyle = '#f4efe2';
-  circle(ctx, x + r * 0.12, y + r * 0.06, r * 0.09);
-  ctx.fill();
-  // net mesh over the finds
-  ctx.save();
-  ctx.beginPath();
-  ctx.ellipse(x, y, r * 0.36, r * 0.3, 0.3, 0, TAU);
-  ctx.clip();
-  ctx.strokeStyle = 'rgba(230, 210, 160, 0.75)';
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  for (let k = -3; k <= 3; k++) {
-    ctx.moveTo(x + k * r * 0.12 - r * 0.4, y - r * 0.4);
-    ctx.lineTo(x + k * r * 0.12 + r * 0.4, y + r * 0.4);
-    ctx.moveTo(x + k * r * 0.12 + r * 0.4, y - r * 0.4);
-    ctx.lineTo(x + k * r * 0.12 - r * 0.4, y + r * 0.4);
-  }
-  ctx.stroke();
-  ctx.restore();
 }
 
 /** Otto's modern helmet: smooth shell, dark wraparound visor, two headlights. */

@@ -86,6 +86,24 @@ export class Effects {
     });
   }
 
+  /** A dark wisp that drifts up slowly and fades (the Hollow Diver's, in place of air bubbles). */
+  wisp(x, y) {
+    if (this.particles.length >= CONFIG.effects.maxParticles) return;
+    const life = 0.8 + Math.random() * 0.6;
+    this.particles.push({
+      x,
+      y,
+      vx: (Math.random() - 0.5) * 8,
+      vy: -10 - Math.random() * 10,
+      life,
+      maxLife: life,
+      size: 2.5 + Math.random() * 2.5,
+      bubble: true, // wobbles upward like a bubble...
+      wisp: true, // ...but is drawn as soft dark smoke
+      wobble: Math.random() * TAU,
+    });
+  }
+
   /** Floating text, e.g. damage numbers. */
   text(x, y, value, color = '#ffffff', size = 14) {
     if (!CONFIG.effects.damageNumbers || this.texts.length >= CONFIG.effects.maxTexts) return;
@@ -177,7 +195,19 @@ export class Effects {
     ctx.strokeStyle = 'rgb(225, 250, 255)';
     for (const p of this.particles) {
       ctx.globalAlpha = p.life / p.maxLife;
-      if (p.bubble) {
+      if (p.wisp) {
+        const k = p.life / p.maxLife;
+        ctx.globalAlpha = 0.45 * k;
+        ctx.fillStyle = '#1a1438';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * (1.6 - k * 0.6), 0, TAU); // spreads out as it fades
+        ctx.fill();
+        ctx.globalAlpha = 0.35 * k;
+        ctx.fillStyle = '#6e5fc2';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 0.45, 0, TAU);
+        ctx.fill();
+      } else if (p.bubble) {
         ctx.globalAlpha *= 0.7;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, TAU);

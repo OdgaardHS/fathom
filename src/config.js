@@ -21,7 +21,7 @@ export const CONFIG = {
     invulnTime: 0.4, // seconds of invulnerability after taking a hit
   },
 
-  defaultHero: 'mara',
+  defaultHero: 'otto',
   defaultWeapon: 'harpoon',
   // Every weapon can be picked at the start for now. Later, set this to false and
   // add ids to progress.unlockedWeapons as players find weapons during dives.
@@ -29,10 +29,14 @@ export const CONFIG = {
   slots: { weapons: 4, passives: 4 },
   levelUpChoices: 3,
 
-  talents: {
-    every: 5, // every 5th level is a talent pick instead of a normal one
-    tierLevels: { 1: 5, 2: 10, 3: 20 }, // first level each talent tier can be offered
-    rerollsPerDive: 1,
+  // Between dives: characters and weapons level up from pearls, 1 talent point per level
+  // (see systems/progression.js). XP needed to go from `level` to `level + 1`. A cleared depth
+  // is worth about 3,000 XP: the first character level comes from even a short dive, the full
+  // character tree takes about 8 cleared dives, and a weapon earns about one point per dive you
+  // carry it through.
+  progression: {
+    characterXp: (level) => 600 + 300 * (level - 1),
+    weaponXp: (level) => 2000 + 1000 * (level - 1),
   },
 
   /** XP needed to go from `level` to `level + 1`. */

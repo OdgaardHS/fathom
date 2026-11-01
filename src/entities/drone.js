@@ -79,7 +79,8 @@ export class Drone {
 
   /** Damage per shot right now. */
   damage(game) {
-    return this.weapon.stats.droneDamage * game.player.stats.might * this.power;
+    // crewScale: a crewmate's copy of the Drone Launcher launches weaker drones
+    return this.weapon.stats.droneDamage * game.player.stats.might * this.power * (this.weapon.crewScale ?? 1);
   }
 
   /** Shots per second right now. */

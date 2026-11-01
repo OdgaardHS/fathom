@@ -31,9 +31,10 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
 | Key | Action |
 | --- | --- |
 | WASD / arrow keys | Swim (weapons fire on their own) |
-| Number keys or click | Pick an upgrade, talent or trinket (and a diver or weapon on those screens; the first 9 weapons have keys) |
+| Number keys or click | Pick an upgrade or trinket (and a diver or weapon on those screens; the first 9 weapons have keys) |
 | Drag | On the trinket screen, drag a trinket onto one of your weapons (or press its number, then the weapon's; Esc puts it back) |
-| R | Reroll talent offers (once per dive) |
+| R | Spit out both level-up cards and draw new ones (the Hollow Diver's *Spit It Out*) |
+| T | Open the talent trees from the game-over screen |
 | Esc / P | Pause (the pause screen also has Music and Sounds on/off buttons) |
 | M | Mute or unmute all sound |
 | Enter | Dive into the deepest open depth (on the depth screen) |
@@ -63,23 +64,40 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
   debug mode (below) to try it.
 - **Mix and match a diver and a weapon.** Before each dive you pick a character, then a starting
   weapon. Any character can use any weapon.
-  - **Characters** each have one passive and a few talents of their own:
-    - **Mara Quell, Salvage Diver**: *Salvager*, +15% pearl value and +20% pickup range.
-      100 health. Brass helmet, rope coil with a grappling hook, a salvage net on her back.
+  - **Characters** each have one passive and a talent tree of their own:
     - **Otto Brask, ROV Pilot**: *Field Engineer*, +20% duration. 90 health. Visor helmet,
       radio antenna, a drone docked on his back and a controller in his hands.
-  - **13 weapons**, each with its own talents (see [Weapons](#weapons) below). More weapons can be
+    - **Captain Isolde Crane, Expedition Commander**: *First Mate*, a crewmate dives at her side
+      and fires weaker copies of all your weapons (35% damage). Navy coat with gold epaulettes, a
+      peaked helmet with an anchor badge, a radio handset on a coiled cord. The crewmate is a
+      smaller diver in white with an orange helmet and a red knit cap.
+    - **Old Jory, Shantyman**: *Shanty*, he's always singing, and each song helps while he sings
+      it: *Haul Away* (swim 20% faster), *Blow the Man Down* (weapons recharge 20% faster) and
+      *Leave Her, Johnny* (heal 2 health a second). He moves on to the next song every 12 seconds;
+      the HUD shows which one. Yellow oilskins, a brass helmet, a red beard, a knit cap and a
+      squeezebox; notes drift up while he sings.
+    - **Coralline, Reef-grown** (the tank): *Coral Armor*, coral plates cover her, and each one
+      blocks a hit completely, then breaks off and regrows after 8 seconds (3 to start). 160 health,
+      swims 15% slower. A helmet half grown over with coral, a starfish on top, anemones trailing
+      behind; her plates circle her as coral nubs.
+    - **The Hollow Diver, Nobody inside** (secret): *Hollow*, level-ups show 2 cards instead of 3,
+      but the card you take is 25% stronger. A passive gives 25% more (Might: +12.5% damage a level),
+      and a weapon level-up improves its weapon 25% more (+4 damage becomes +5; counts and pierce
+      round to the nearest whole number). An old copper suit gone green, with no air tank, empty
+      gloves on loose cuffs, and a helmet whose front window is missing: inside there's only a
+      deep-blue dark with specks drifting in it. Dark wisps leak from it instead of bubbles.
+      **To unlock it**, clear a depth while carrying only one weapon the whole dive. Until then the
+      diver select shows a dark silhouette with no name and no hint, and its talent tree is hidden
+      (debug mode shows it). It's saved in `progress.secrets`.
+  - **13 weapons**, each with its own talent tree (see [Weapons](#weapons) below). More weapons can be
     picked up on level-up cards during a dive, up to 4.
   - Every weapon but one can be picked at the start for now. **The Watching Eye is found deeper
     down**: level-ups only offer it from The Open Blue on, and once you've taken it on a dive it
     unlocks as a starting weapon (saved in `progress.unlockedWeapons`). `CONFIG.unlockAllWeapons` in
     `src/config.js` switches the rest to the same rule; `foundFrom` on a weapon sets where it's found.
-- **Talents**: every 5th level is a talent pick (3 cards, one reroll per dive). The cards are drawn
-  from **one pool: your character's talents plus the talents of every weapon you carry**, so picking
-  up a new weapon mid-dive adds its talents to the pool. Each card says where it came from. Tier 1
-  from level 5, tier 2 from 10, build-defining talents from 20 (one per dive). Talents change how
-  your skills work rather than adding stats (see below). Offers lean toward talents that play off
-  the stats you're already building.
+- **Talent trees** (progression between dives, see [Talent trees](#talent-trees)): every diver and
+  every weapon has a tree. Level-ups during a dive are all upgrade cards now; the talents are what
+  you build up from dive to dive.
 - **Trinkets**: elite enemies drop a chest that glows blue. Besides its upgrade, it offers a choice
   of trinkets, shown above your weapon slots: drag the one you want onto a weapon. Hovering a weapon
   while you drag says what the trinket will do there. Each weapon holds one trinket, which stays on it
@@ -142,6 +160,76 @@ files. Sound starts on your first click or key press, since browsers block audio
   is hidden. When lots of things happen at once, each sound has a short cooldown and there's a cap
   on how many play together, so big fights don't turn into noise.
 
+## Talent trees
+
+Between dives you grow stronger through talent trees, shaped like a modern WoW spec tree. Open them
+with **Talents** on the depth screen, the game-over screen (or press **T**) or the cleared screen.
+
+- **Points**: your diver levels up from every pearl you collect in a dive, and each weapon from the
+  pearls you collect while carrying it. The XP is banked when the dive ends, whether you die, clear
+  the depth or abandon it, and the game-over and cleared screens say what levelled up. Each level is
+  one talent point for that tree. The first diver level comes after even a short dive, the full
+  diver tree takes about eight cleared depths, and a weapon earns about one point per dive you carry
+  it through. The curves are `CONFIG.progression` in `src/config.js`.
+- **Shape**: talents sit on a grid with lines between them. You can learn a talent once you have a
+  point in one that leads into it. Dashed gates open the lower rows once enough points are spent in
+  the rows above. Some talents have several ranks (0/2). **Choice nodes** hold two (or three)
+  talents side by side: you take one and can swap freely. Capstones sit at the bottom.
+- **Budget**: a tree holds more than its points can buy (a diver's 12 points against 14 to 17 ranks), so
+  you pick a path. Small weapon trees have 3 to 6 points.
+- **Respec is free**: right-click a talent to take a point back (as long as nothing below depends
+  on it), or reset the whole tree.
+- **In a dive**, everything you've learned is active from the start. A weapon's talents switch on
+  when you pick that weapon up.
+- **Debug mode** (F3) adds a "+1 level" button to the tree screen for testing.
+
+**Otto's tree** leans into machines: *Scrap Recycler*, *Spotter Uplink*, *Auto-Loader* (every few
+attacks reload at once), *Emergency Venting*, *Signal Boost* (marks jump on when their enemy dies),
+*Field Repairs*, *Laser Sweep* (his docked drone fires on the nearest enemies), *Tow Cable*, a choice
+of *Calibration* or *Sensor Buoy*, *Cascade*, *Failsafe*, *Uplink Relay* (hits on marked enemies
+reload that weapon), and a capstone choice of *Overclock* or *Jury-Rig*.
+
+**The Captain's tree** has three directions. *Crew*: *Veteran Crew* (stronger copies), *Covering
+Fire*, *Field Medic*, a choice of *Specialist* (the crewmate stops copying and instead wields the
+weapon in an extra weapon slot at full strength; that slot is framed in gold) or *Second Mate* (a
+second copying crewmate), and *Lifeline*. *Supply*: *Supply Drop* (a crate with an upgrade every 45
+seconds), *Ammo Crate*, *Quartermaster*. *The ship's guns*: *Depth Charges* on the biggest crowd
+(a marker shows where they'll land), *Spotter Rounds*, *Bracketing Fire*, *Torpedo Run*. Capstone
+choice: *Broadside* or *All Hands on Deck*.
+
+**Jory's tree**: new songs (*Drunken Sailor* +20% damage, *Wellerman* pearls, *South Australia*
+attack speed, *Spanish Ladies* slows enemies around you), how songs build and end (*Encore* longer
+verses, *Crescendo*, a choice of *Finale* (a blast at the end of every song) or *Harmony* (the last
+song lingers), *Call and Response* reloads everything on each new song), and grog and mischief
+(*Grog Ration*, *Liquid Courage*, *Rum Barrel*, *Sea Legs*). Capstone choice: *Sea Choir* (two songs
+at once) or *Ghost Ship Chorus* (every song at once, now and then).
+
+**Coralline's tree**: regrowth (*Thick Coral*, *Rapid Growth*, *Symbiosis*, *Living Stone*,
+*Overgrowth*), thorns (*Barbed Polyps*, *Fire Coral*, *Stinging Bloom*, *Petrify*) and the reef
+(*Reef Seed* grows coral outcrops that enemies have to swim around, a choice of *Brain Coral* or
+*Atoll*, *Reef Keeper*). Capstone choice: *Great Barrier* (a ring of coral holds the horde back) or
+*Coral Colossus* (when her last plate breaks, she can't be hurt for a while and crushes what she
+touches).
+
+**The Hollow Diver's tree** changes how it chooses. *The choice itself*: *Spit It Out* (redraw both
+cards, 3 or 5 times a dive), *Gorge* (every 5th level-up you take both), *Aftertaste* (the card you
+pass up comes back next time, 50% stronger), a choice of *One Path* (1 card, 75% stronger) or
+*Devour* (the card you pass up heals 10), and *Last Meal* (once a dive it eats its next level-up
+instead of dying). *What it carries*: *Hollow Out* (eat a weapon on the level-up screen: its slot
+frees up, its talents stay, and so does its trinket's effect on your other weapons; it never comes
+back), *Pour Out* (drop a passive and share what it was worth among the others), *Empty Suit* (each
+empty passive slot makes cards 10% stronger), *Overflow* (maxed passives keep offering cards, which
+pour into your weakest passive). *Chests and trinkets*: *Gilded Hunger* (every chest holds one more
+upgrade), *Twin Sockets* (two trinkets per weapon, but 2 trinket choices instead of 3), *Inner
+Shrine* (a socket in the suit: its trinket works on every weapon as if attached to each, without its
+effect on your other weapons). Capstone choice: *Nothing Wasted* (take both cards every level-up,
+the second at normal strength) or *Bottomless* (every card is 3% stronger than the one before).
+Each card shows how much stronger it is, and the HUD shows the current bonus.
+
+**Weapon trees** hold each weapon's own talents. The old build-defining talents became capstone
+choices, e.g. the Drone Launcher's *Mothership*, *Hive* or *Kamikaze*, and Needle Darts' *Needle
+Cyclone* or *Sniper*.
+
 ## Shared stats and talents
 
 Every hero uses the same stats, and a stat always means the same thing for everyone:
@@ -154,7 +242,7 @@ Every hero uses the same stats, and a stat always means the same thing for every
 | attack speed | drones, orbiting weapons and tendrils attack faster | Overdrive |
 | area | size of weapons, shots, blasts, clouds and reach | Reach |
 | amount | extra projectiles, orbiters, clouds, lures, thrusts, tendrils, eyes and arc jumps; drone lasers hit one more enemy | Duplicator |
-| growth | pearl (XP) value | Insight, Mara's passive |
+| growth | pearl (XP) value | Insight, Jory's *Wellerman* |
 | magnet, speed, armor, regen, max health | as named | Attractor, Swiftness, Armor, Recovery, Vitality |
 
 Bonuses to the same stat **add**; different stats **multiply**. Haste turns into cooldowns as
@@ -173,10 +261,10 @@ For example:
   → more hits → faster volleys → more hits.
 - *Scrap Recycler* (Otto): every kill brings all your weapons a little closer to firing, so
   anything that kills more (area, amount) also makes every weapon fire faster.
-- *Greed* (Mara): every level-up reloads all your weapons and heals you, so pearl value starts
-  acting like haste and healing.
+- *Call and Response* (Jory): every new song reloads all your weapons, so *Encore* (longer songs)
+  quietly becomes a trade between longer buffs and fewer free reloads.
 
-Each talent card shows "Plays off" with the stats it makes matter.
+Each talent shows "Plays off" in its tree with the stats it makes matter.
 
 ## Trinkets
 
@@ -191,6 +279,12 @@ Not every trinket works on every weapon. The trinket card lists the weapons you 
 nothing for. While you drag one (or after picking it with its number key), each free weapon slot
 glows where it works and is marked "No effect" where it doesn't, and hovering a slot says exactly
 what it will do there. Its effect on your other weapons works wherever you put it.
+
+The Hollow Diver can change this: with *Twin Sockets* each weapon holds two trinkets (two small
+sockets under each weapon on the bar), and with *Inner Shrine* the suit has a socket of its own (on
+the trinket screen it's the last slot; on the bar it sits to the left, marked "Suit"). Code that
+asks whether a weapon holds a trinket uses `hasTrinket(w, id)` and `mountsOf(w)` in
+`src/data/trinkets.js`, which cover all three sockets.
 
 What counts as "firing" (Pilot Fish, Conductor Coil): a weapon's regular attack, i.e. a Harpoon or
 Needle Darts volley, a Drone Launcher launch, a Sonar pulse, a zap, a squirt, a trident attack, a
@@ -213,7 +307,8 @@ Eye's *Evil Eye* setting up a hard-hitting second weapon.
 - **`?seed=1234`** in the URL replays the same dive: same spawns, drops and upgrade offers (as long
   as you make the same choices).
 - **`window.game`** in the browser console gives you the live game object, e.g. `game.player.hp = 999`.
-- To reset saved progress, run `localStorage.removeItem('fathom:progress')` in the console
+- To reset saved progress (depths, diver and weapon levels, talents), run
+  `localStorage.removeItem('fathom:progress')` in the console
   (`fathom:hero` and `fathom:weapon` remember your last picks, `fathom:audio` your sound settings).
 
 ## How it's put together
@@ -240,7 +335,8 @@ src/
   data/               CONTENT — most new stuff goes here
     levels.js         the depths: spawn timeline, scripted events, boss, theme
     heroes.js         the crew: base stats and their one passive
-    talents.js        character talents and weapon talents (together they form the talent pool)
+    talents.js        every talent: character talents and weapon talents
+    trees.js          how they're laid out in each diver's and weapon's talent tree
     enemies.js        enemy stats, behaviour and sprite names, colors
     weapons.js        the weapon list; the five original weapons' stats per level + behaviour
     weapons/          one file per newer weapon (eel, ink, trident, bubbles, lure, shrimp,
@@ -249,7 +345,8 @@ src/
     passives.js       stat-boosting items
   entities/           player (stats, talent and trinket hooks), drone, enemy, enemy behaviours,
                       projectile, hazard, pickup, weapon (incl. its trinket slot)
-  systems/            spawner, upgrade rolls, particles/bubbles & damage numbers
+  systems/            spawner, upgrade rolls, progression (levels, talent points, trees),
+                      particles/bubbles & damage numbers
   render/
     sprites.js        drawing code for every creature, the drones and the divers (with their gear)
     icons.js          a small picture for every weapon, passive and trinket (HUD, cards, menus)
@@ -301,7 +398,8 @@ A projectile can take `onHit` to do something other than plain damage (Bubble Ne
 Scale by the shared stats (`might`, `area`, `cooldown`, `amount`, `duration`, `attackSpeed`) so
 passives and talents affect it, and list them in `scaling` (stat → what it does for this weapon) so
 passive cards show its icon. Give it `tags` (the stats it leans on), a talent list in
-`WEAPON_TALENTS` in `src/data/talents.js`, and optionally `apply(b, rank, player, flags)` plus
+`WEAPON_TALENTS` in `src/data/talents.js` and a tree for them in `WEAPON_TREES` in
+`src/data/trees.js`, and optionally `apply(b, rank, player, flags)` plus
 `passiveText` for something built in while you carry it. It shows up on the weapon screen and on
 level-up cards automatically.
 
@@ -320,20 +418,22 @@ HUD line.
 
 **A character:** add an entry to `src/data/heroes.js` (palette, `stats`, and one passive as
 `trait`). Their look comes from `palette.gear`: add a new kit to `drawDiver` in
-`src/render/sprites.js` so they're easy to tell apart. Then give them a list in `CHARACTER_TALENTS` in `src/data/talents.js` and add their id to
+`src/render/sprites.js` so they're easy to tell apart. Then give them a list in `CHARACTER_TALENTS`
+in `src/data/talents.js`, a tree in `CHARACTER_TREES` in `src/data/trees.js`, and add their id to
 `HERO_ORDER`.
 
-**A talent:** add it to a character's or a weapon's list in `src/data/talents.js`. Ids must be
+**A talent:** add it to a character's or a weapon's list in `src/data/talents.js` and place it in
+that owner's tree in `src/data/trees.js` (row, column, and which nodes lead into it). Ids must be
 unique across all lists. The rule: change how a skill works, don't add stats or give a stat a new
-meaning. A talent can:
+meaning. `ranks` lets it take several points, and `text` can be a function of the rank. A talent
+can:
 - `apply(b, rank, player, flags)`: usually just sets a flag that the skill's code checks
   (e.g. `flags.linkedFire` in `drone.js` and `weapons.js`)
-- `hooks`: react to `kill`, `hit`, `pickup`, `hurt`, `lethal`, `levelUp`, `droneLaunch`,
-  `droneExpire`, `weaponFire`, `shot`, `tick` or `draw`
+- `hooks`: react to `kill`, `hit`, `pickup`, `hurt`, `shield` (return true to block a hit),
+  `lethal`, `levelUp`, `droneLaunch`, `droneExpire`, `weaponFire`, `shot`, `tick` or `draw`
 - `derive(b, rank, player, flags)`: rare overrides that need final values after every `apply`
 
-Set `tags` to the shared stats the talent makes matter. They show as "Plays off" on the card and
-make offers lean toward builds that fit.
+Set `tags` to the shared stats the talent makes matter. They show as "Plays off" in the tree.
 
 **An old-god tease:** add an `{ type: 'omen', omen: 'name' }` event to a level and handle that name
 in the theme's `omen()` function.

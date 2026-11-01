@@ -64,7 +64,7 @@ export class Projectile {
     life = 2, // seconds before it disappears
     knockback = 0,
     color = '#ffffff',
-    shape = 'orb', // how it looks: 'harpoon' | 'dart' | 'star' | 'spine' | 'ink' | 'pod' | 'bubble' | 'cavitation' | 'orb'
+    shape = 'orb', // how it looks: 'harpoon' | 'dart' | 'star' | 'spine' | 'ink' | 'pod' | 'bubble' | 'cavitation' | 'torpedo' | 'orb'
     kind = shape, // what it is, for talents: 'harpoon' | 'dart' | 'pod' | 'starfish' | ...
     owner = null, // who fired it (e.g. a drone); passed to hit/kill hooks instead of the projectile
     onEnd = null, // called once when it hits its last enemy or runs out
@@ -240,6 +240,32 @@ export class Projectile {
         ctx.fill();
         break;
       }
+
+      case 'torpedo':
+        // A grey torpedo with fins and a churning prop
+        ctx.fillStyle = 'rgba(220, 240, 255, 0.3)';
+        ctx.beginPath();
+        ctx.ellipse(-14, 0, 8, 2.5, 0, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = this.color;
+        ctx.strokeStyle = 'rgba(20, 30, 40, 0.8)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(-8, -2.6, 16, 5.2, 2.6);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#ff6b4a';
+        ctx.beginPath();
+        ctx.arc(7, 0, 2.2, -Math.PI / 2, Math.PI / 2);
+        ctx.fill();
+        ctx.fillStyle = '#5a6670';
+        ctx.beginPath();
+        ctx.moveTo(-7, 0);
+        ctx.lineTo(-10, -4);
+        ctx.lineTo(-10, 4);
+        ctx.closePath();
+        ctx.fill();
+        break;
 
       case 'cavitation':
         // A streaking, flickering cavitation bubble

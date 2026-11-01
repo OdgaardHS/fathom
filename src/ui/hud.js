@@ -1,7 +1,7 @@
 import { CONFIG } from '../config.js';
 import { TAU } from '../core/math.js';
 import { PASSIVES } from '../data/passives.js';
-import { TRINKETS } from '../data/trinkets.js';
+import { TRINKETS, mountsOf } from '../data/trinkets.js';
 import { drawItemIcon } from '../render/icons.js';
 import { formatTime } from './format.js';
 
@@ -22,6 +22,8 @@ const SLOT_STYLES = {
   weapon: { fill: 'rgba(56, 78, 160, 0.8)', empty: 'rgba(56, 78, 160, 0.38)', rim: 'rgba(14, 20, 58, 0.95)' },
   trinket: { fill: 'rgba(34, 128, 146, 0.8)', empty: 'rgba(34, 128, 146, 0.34)', rim: 'rgba(8, 38, 48, 0.95)' },
   passive: { fill: 'rgba(56, 78, 160, 0.66)', empty: 'rgba(56, 78, 160, 0.3)', rim: 'rgba(14, 20, 58, 0.9)' },
+  crew: { fill: 'rgba(150, 110, 40, 0.82)', empty: 'rgba(150, 110, 40, 0.4)', rim: 'rgba(60, 40, 10, 0.95)' },
+  suit: { fill: 'rgba(98, 76, 170, 0.82)', empty: 'rgba(98, 76, 170, 0.36)', rim: 'rgba(24, 14, 52, 0.95)' },
 };
 
 /** The in-run HUD, drawn on the canvas in screen space (after the camera transform). */
@@ -36,10 +38,6 @@ export function drawHud(ctx, game, w, h) {
   ctx.fillRect(0, 0, w * Math.min(1, p.xp / p.xpToNext), barH);
 
   label(ctx, `LV ${p.level}`, 16, barH + 12, { size: 16 });
-  const levelWidth = ctx.measureText(`LV ${p.level}`).width;
-  const every = CONFIG.talents.every;
-  const nextTalent = Math.ceil((p.level + 1) / every) * every;
-  label(ctx, `talent at ${nextTalent}`, 16 + levelWidth + 8, barH + 15, { size: 11, color: '#ffd166', weight: 600 });
   label(ctx, formatTime(game.time), w / 2, barH + 10, { size: 28, align: 'center' });
   label(ctx, `${game.level.name} · ${game.level.depth}`, w / 2, barH + 44, {
     size: 12,
@@ -102,7 +100,9 @@ function drawActionBar(ctx, p, w, h) {
   for (let i = 0; i < n; i++) {
     const wp = p.weapons[i];
     const sx = x + i * (WEAPON_SLOT + SLOT_GAP);
-    slotFrame(ctx, sx, y, WEAPON_SLOT, SLOT_STYLES.weapon, Boolean(wp));
+    // The Captain's crew slot (Specialist) is the last one, framed in her gold.
+    const crewSlot = p.flags.crewSpecialist && i === n - 1;
+    slotFrame(ctx, sx, y, WEAPON_SLOT, crewSlot ? SLOT_STYLES.crew : SLOT_STYLES.weapon, Boolean(wp));
     if (wp) {
       itemPicture(ctx, 'weapon', wp.id, wp.def.icon, sx, y, WEAPON_SLOT);
       cooldownSweep(ctx, wp, sx, y, WEAPON_SLOT);
@@ -110,11 +110,36 @@ function drawActionBar(ctx, p, w, h) {
     }
     label(ctx, String(i + 1), sx + 4, y + 3, { size: 9, color: 'rgba(225, 235, 255, 0.6)', weight: 700 });
 
-    // its trinket, centered under it
-    const tx = sx + (WEAPON_SLOT - TRINKET_SLOT) / 2;
-    slotFrame(ctx, tx, trinketY, TRINKET_SLOT, SLOT_STYLES.trinket, Boolean(wp?.trinket), wp ? 1 : 0.5);
-    if (wp?.trinket) itemPicture(ctx, 'trinket', wp.trinket, TRINKETS[wp.trinket].icon, tx, trinketY, TRINKET_SLOT);
-    else if (wp) socket(ctx, tx + TRINKET_SLOT / 2, trinketY + TRINKET_SLOT / 2);
+    // its trinket, centered under it (two smaller sockets side by side with Twin Sockets)
+    if (p.flags.twinSockets) {
+      const half = (WEAPON_SLOT - 4) / 2;
+      [wp?.trinket, wp?.trinket2].forEach((id, k) => {
+        const tx = sx + k * (half + 4);
+        const ty = trinketY + (TRINKET_SLOT - half) / 2;
+        slotFrame(ctx, tx, ty, half, SLOT_STYLES.trinket, Boolean(id), wp ? 1 : 0.5);
+        if (id) itemPicture(ctx, 'trinket', id, TRINKETS[id].icon, tx, ty, half);
+        else if (wp) socket(ctx, tx + half / 2, ty + half / 2);
+      });
+    } else {
+      const tx = sx + (WEAPON_SLOT - TRINKET_SLOT) / 2;
+      slotFrame(ctx, tx, trinketY, TRINKET_SLOT, SLOT_STYLES.trinket, Boolean(wp?.trinket), wp ? 1 : 0.5);
+      if (wp?.trinket) itemPicture(ctx, 'trinket', wp.trinket, TRINKETS[wp.trinket].icon, tx, trinketY, TRINKET_SLOT);
+      else if (wp) socket(ctx, tx + TRINKET_SLOT / 2, trinketY + TRINKET_SLOT / 2);
+    }
+  }
+
+  // The Hollow Diver's suit socket (Inner Shrine), on its own to the left, level with the trinkets.
+  if (p.flags.innerShrine) {
+    const size = TRINKET_SLOT;
+    const sx = x - PLATE_PAD * 2 - SIDE_GAP - size;
+    if (sx - PLATE_PAD >= 8) {
+      const id = p.shrine?.trinket;
+      plate(ctx, sx - PLATE_PAD, trinketY - PLATE_PAD - 13, size + PLATE_PAD * 2, size + PLATE_PAD * 2 + 13);
+      label(ctx, 'Suit', sx + size / 2, trinketY - 15, { size: 9, align: 'center', color: 'rgba(214, 200, 255, 0.8)' });
+      slotFrame(ctx, sx, trinketY, size, SLOT_STYLES.suit, Boolean(id));
+      if (id) itemPicture(ctx, 'trinket', id, TRINKETS[id].icon, sx, trinketY, size);
+      else socket(ctx, sx + size / 2, trinketY + size / 2);
+    }
   }
 
   // Passives: two rows to the right of the weapons, if there's room; otherwise one row above.
@@ -248,10 +273,16 @@ function drawWeaponNotes(ctx, game, x, bottom) {
   for (const w of p.weapons) {
     const note = w.def.hud?.(game);
     if (note) lines.push(note);
-    const trinketNote = w.trinket ? TRINKETS[w.trinket].hud?.(w) : null;
-    if (trinketNote) lines.push(trinketNote);
+    // its trinkets' notes (not the suit's: that one sits on every weapon)
+    for (const { id, holder } of mountsOf(w)) {
+      if (holder.attachedOnly) continue;
+      const trinketNote = TRINKETS[id].hud?.(holder);
+      if (trinketNote) lines.push(trinketNote);
+    }
   }
   if (p.hasBuff('overclock')) lines.push(`Overclock ${p.buffs.get('overclock').toFixed(1)}s`);
+  const heroLine = p.hero.hud?.(game);
+  if (heroLine) lines.unshift(heroLine);
   const top = bottom - lines.length * 16;
   lines.forEach((line, i) => label(ctx, line, x, top + i * 16, { size: 12, color: '#bfe9ef', weight: 600 }));
 }

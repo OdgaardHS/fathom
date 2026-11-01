@@ -99,7 +99,7 @@ export const TRINKETS = {
     },
     hooks: {
       weaponFire(game, fired, holder) {
-        if (fired === holder || !worksOn('pilotFish', holder.id)) return;
+        if (fired.id === holder.id || !worksOn('pilotFish', holder.id)) return;
         // Weapons without a cooldown say what "sooner" means for them (the Watching Eye heats up).
         if (holder.def.onPilot) holder.def.onPilot(holder, PILOT_CUT, game);
         else holder.timer -= PILOT_CUT;
@@ -126,7 +126,7 @@ export const TRINKETS = {
         if (pr.generation !== 0 || !pr.weapon) return;
         if (pr.weapon === holder.id) {
           if (worksOn('undertowStone', holder.id) && !pr.selfTrinkets) pr.undertow = true;
-        } else if (pr.kind !== 'pod') {
+        } else if (pr.kind !== 'pod' && !holder.attachedOnly) {
           // Pods fly exactly to their target, so a longer flight would only make them overshoot.
           pr.life *= RANGE_BONUS;
           pr.maxLife *= RANGE_BONUS;
@@ -154,6 +154,7 @@ export const TRINKETS = {
         if (pr.weapon === holder.id && worksOn('splitCoral', holder.id)) pr.splitCoral = true;
       },
       kill(game, { enemy, source }, holder) {
+        if (holder.attachedOnly) return; // in the Hollow Diver's suit: only the attached effect
         if (!(source instanceof Projectile) || source.generation !== 0 || source.kind === 'pod') return;
         if (!source.weapon || source.weapon === holder.id) return;
         if (game.rng.chance(SPLIT_CHANCE)) game.splitShot(source, 2, enemy.x, enemy.y, enemy);
@@ -167,10 +168,66 @@ export const TRINKET_ORDER = Object.keys(TRINKETS);
 /** Whether trinket `id` does anything on weapon `weaponId` as the attached weapon. */
 export const worksOn = (id, weaponId) => Boolean(TRINKETS[id]?.onWeapon[weaponId]);
 
-/** The trinket on weapon `w` as a hook source for Player.trigger (hooks get the weapon as `holder`). */
-export function trinketSource(w) {
-  const def = TRINKETS[w.trinket];
-  const hooks = {};
-  for (const [event, fn] of Object.entries(def.hooks ?? {})) hooks[event] = (game, payload) => fn(game, payload, w);
-  return { hooks, rank: 1, trinket: w.trinket };
+/**
+ * The trinkets working on weapon `w`, each as { id, holder }. Hooks and power() get `holder`,
+ * which is the weapon itself for its own slot. A weapon can hold more than one with the Hollow
+ * Diver's talents: a second socket (Twin Sockets), and the trinket in the suit (Inner Shrine),
+ * which works on every weapon as if attached to it, without its effect on the other weapons
+ * (`holder.attachedOnly`). For those, `holder` is a view of the weapon with its own trinket state.
+ */
+export function mountsOf(w) {
+  const list = [];
+  if (w.trinket) list.push({ id: w.trinket, holder: w });
+  if (w.trinket2) list.push({ id: w.trinket2, holder: weaponView(w, 'trinket2', 'trinketState2', false) });
+  if (w.shrine && worksOn(w.shrine, w.id)) list.push({ id: w.shrine, holder: weaponView(w, 'shrine', 'shrineState', true) });
+  return list;
+}
+
+/** Whether trinket `id` works on weapon `w` as its attached weapon (in any of its sockets). */
+export function hasTrinket(w, id) {
+  return w.trinket === id || w.trinket2 === id || (w.shrine === id && worksOn(id, w.id));
+}
+
+/** The trinkets on weapon `w` as hook sources for Player.trigger. */
+export function trinketSources(w) {
+  return mountsOf(w).map(({ id, holder }) => {
+    const hooks = {};
+    for (const [event, fn] of Object.entries(TRINKETS[id].hooks ?? {})) hooks[event] = (game, payload) => fn(game, payload, holder);
+    return { hooks, rank: 1, trinket: id };
+  });
+}
+
+/** What weapon `w`'s trinkets do to the attack it's firing: { damage, size, color, charged } or null. */
+export function trinketPower(w, game) {
+  let power = null;
+  for (const { id, holder } of mountsOf(w)) {
+    const extra = TRINKETS[id].power?.(holder, game);
+    if (!extra) continue;
+    power = power ? { ...power, damage: power.damage * extra.damage, size: power.size * extra.size, charged: true } : extra;
+  }
+  return power;
+}
+
+// Views are cached per weapon and socket, so a trinket's state stays put between stat updates.
+const VIEWS = new WeakMap();
+function weaponView(w, trinketKey, stateKey, attachedOnly) {
+  let views = VIEWS.get(w);
+  if (!views) VIEWS.set(w, (views = {}));
+  if (views[trinketKey]) return views[trinketKey];
+  const own = { trinket: null, trinketState: null, attachedOnly };
+  const view = new Proxy(w, {
+    get(target, key) {
+      if (key === 'trinket') return target[trinketKey];
+      if (key === 'trinketState') return target[stateKey];
+      if (key === 'attachedOnly') return own.attachedOnly;
+      return target[key];
+    },
+    set(target, key, value) {
+      if (key === 'trinketState') target[stateKey] = value;
+      else target[key] = value;
+      return true;
+    },
+  });
+  views[trinketKey] = view;
+  return view;
 }

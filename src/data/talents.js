@@ -1,23 +1,25 @@
-import { isHarpoon, sourceKind } from '../entities/projectile.js';
+import { CONFIG } from '../config.js';
+import { isHarpoon, sourceKind, weaponOf } from '../entities/projectile.js';
+import { crowdCenter } from './weapons/common.js';
 
 /**
- * Talents. Every 5th level you pick one of three, drawn from one pool:
- * your character's talents + the talents of every weapon you're carrying.
- * So a character + weapon pair gives a different pool, and picking up a
- * second weapon during a dive adds its talents to the mix.
+ * Talents. Each character and each weapon has a talent tree (layouts in data/trees.js) that
+ * you build up between dives with points from levelling that character or weapon. Every
+ * talent you've taken is active from the start of a dive; a weapon's talents switch on when
+ * you pick that weapon up.
  *
  * The rule: a talent never hands out stats and never changes what a stat means.
  * It changes how something works, so the shared stats (haste, duration, attack
  * speed, amount, size, damage, pickup range, pearl value) pay off in new ways.
  *
- *   tags      the shared stats this talent plays off ("Plays off" on the card).
- *             Offers lean toward talents whose stats you're already building.
- *   tier      1 = from level 5, 2 = from level 10, 3 = build-defining, from level 20.
- *             Only one tier-3 talent per dive.
+ *   tags      the shared stats this talent plays off ("Plays off" in the tree)
+ *   tier      1 = early in its tree, 2 = deeper, 3 = a capstone (sets the node's color)
+ *   ranks     how many points it can take (default 1). `text` can be a function of the rank.
  *   apply(b, rank, player, flags)   usually just sets a flag the game checks
- *   derive(b, rank, player, flags)  runs after every apply (for overrides like Mothership's cap)
- *   hooks   { kill, hit, pickup, hurt, lethal, levelUp, droneLaunch, droneExpire, weaponFire, shot, tick, draw }
- *           each (game, payload, rank). A `lethal` hook returning true prevents death.
+ *   derive(b, rank, player, flags)  runs after every apply (for overrides that need final values)
+ *   hooks   { kill, hit, pickup, hurt, shield, lethal, levelUp, droneLaunch, droneExpire, weaponFire,
+ *             shot, tick, draw }, each (game, payload, rank). A `lethal` hook returning true
+ *           prevents death; a `shield` hook returning true blocks a hit completely.
  *           `hit` and `kill` payloads say which weapon did it: sourceKind(payload.projectile / .source).
  */
 
@@ -43,104 +45,866 @@ const flag = (name) => (b, r, p, f) => {
 };
 
 /** Bring every weapon you carry closer to firing (or fire it right away with Infinity). */
-function reloadAll(player, seconds) {
+export function reloadAll(player, seconds) {
   for (const w of player.weapons) w.timer = seconds === Infinity ? 0 : w.timer - seconds;
 }
 
 // =================================================================== characters
 
-const MARA = [
+// ------------------------------------------------------------ Captain Isolde Crane
+
+export const SHIP = { kind: 'ship' }; // the Captain's ship: call-ins aren't one of your weapons
+const crewmates = (game) => game.allies.filter((a) => a.kind === 'crew' && !a.dead);
+/** Damage of the ship's call-ins: grows with your level, like Otto's Laser Sweep. */
+export const shipDamage = (p) => (10 + 2 * p.level) * p.stats.might;
+
+/** Drop `count` depth charges around (x, y). They sink for a moment, then blow. */
+function dropCharges(game, x, y, count, spread, damage, delay = 0.8) {
+  const p = game.player;
+  for (let i = 0; i < count; i++) {
+    const a = game.rng.range(0, Math.PI * 2);
+    const d = i === 0 ? 0 : game.rng.range(spread * 0.4, spread);
+    game.callIn({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, delay: delay + i * 0.08, radius: 60 * p.stats.area, damage, source: SHIP, color: '#ffb347' });
+  }
+}
+
+const CAPTAIN = [
   {
-    id: 'treasureHooks',
-    name: 'Treasure Hooks',
-    icon: 'TH',
+    id: 'veteranCrew',
+    name: 'Veteran Crew',
+    icon: 'VC',
     tier: 1,
-    tags: ['area', 'growth'],
-    text: 'Every shot you fire snags the pearls it flies past and sends them to you.',
-    apply: flag('treasureHooks'),
+    ranks: 2,
+    tags: ['damage'],
+    text: (r) => `Your crew’s copies of your weapons hit for ${r === 1 ? 50 : 65}% instead of 35%.`,
+    apply: (b, r, p, f) => {
+      f.crewDamage = 0.35 + 0.15 * r;
+    },
   },
   {
-    id: 'salvageHaul',
-    name: 'Salvage Haul',
-    icon: 'SH',
+    id: 'depthCharges',
+    name: 'Depth Charges',
+    icon: 'DC',
     tier: 1,
-    tags: ['growth'],
-    text: 'Every 120 XP you collect drops a treasure chest nearby.',
+    ranks: 2,
+    tags: ['cooldown', 'area', 'amount'],
+    text: (r) => `Every 8 seconds (faster with haste), the ship drops ${r === 1 ? 3 : 5} depth charges on the biggest crowd near you (one more per amount). Their damage grows with your level.`,
+    hooks: {
+      tick(game, dt, rank) {
+        const p = game.player;
+        const c = p.counters;
+        c.charges = (c.charges ?? 3) - dt;
+        if (c.charges > 0) return;
+        const spot = crowdCenter(game, p.x, p.y, 420, 90);
+        if (!spot) return;
+        c.charges = 8 * p.stats.cooldown;
+        const count = (rank === 1 ? 3 : 5) + p.stats.amount;
+        dropCharges(game, spot.x, spot.y, count, 70, shipDamage(p));
+        // Bracketing Fire: a second wave right after, a little weaker.
+        if (p.flags.bracketing) dropCharges(game, spot.x, spot.y, count, 90, shipDamage(p) * 0.6, 1.5);
+      },
+    },
+  },
+  {
+    id: 'coveringFire',
+    name: 'Covering Fire',
+    icon: 'CF',
+    tier: 1,
+    tags: ['cooldown'],
+    text: 'When you get hit, your crew reloads every weapon they fire at once.',
+    hooks: {
+      hurt(game) {
+        for (const c of crewmates(game)) c.reload(game);
+      },
+    },
+  },
+  {
+    id: 'supplyDrop',
+    name: 'Supply Drop',
+    icon: 'SD',
+    tier: 1,
+    tags: ['cooldown', 'growth'],
+    text: 'Every 45 seconds (faster with haste), the ship drops a supply crate near you. Open it for an upgrade, like a treasure chest.',
+    hooks: {
+      tick(game, dt) {
+        const p = game.player;
+        const c = p.counters;
+        c.supply = (c.supply ?? 30) - dt;
+        if (c.supply > 0) return;
+        c.supply = 45 * p.stats.cooldown;
+        const a = game.rng.range(0, Math.PI * 2);
+        const crate = game.spawnPickup('chest', p.x + Math.cos(a) * 110, p.y + Math.sin(a) * 110);
+        crate.supply = true;
+        game.announce('Supply drop!', 1.2);
+      },
+    },
+  },
+  {
+    id: 'spotterRounds',
+    name: 'Spotter Rounds',
+    icon: 'SR',
+    tier: 1,
+    tags: ['duration', 'damage'],
+    text: 'Everything the ship’s call-ins hit is marked for 3 seconds (longer with duration). Marked enemies take 20% more damage from your weapons.',
+    apply: flag('spotterRounds'),
+  },
+  {
+    id: 'fieldMedic',
+    name: 'Field Medic',
+    icon: 'FM',
+    tier: 1,
+    tags: ['cooldown', 'regen'],
+    text: 'Every 10 seconds (faster with haste), your crewmate patches you up for 6% of your health.',
+    hooks: {
+      tick(game, dt) {
+        const p = game.player;
+        const c = p.counters;
+        c.medic = (c.medic ?? 10) - dt;
+        if (c.medic > 0 || crewmates(game).length === 0) return;
+        c.medic = 10 * p.stats.cooldown;
+        if (p.hp >= p.stats.maxHp) return;
+        p.heal(p.stats.maxHp * 0.06);
+        game.effects.text(p.x, p.y - p.radius - 8, '+', '#6bd968', 16);
+      },
+    },
+  },
+  {
+    id: 'bracketingFire',
+    name: 'Bracketing Fire',
+    icon: 'BF',
+    tier: 2,
+    tags: ['area', 'damage'],
+    text: 'Depth charges come in two waves: a second, wider wave lands right after the first at 60% damage.',
+    apply: flag('bracketing'),
+  },
+  {
+    id: 'crewSpecialist',
+    name: 'Specialist',
+    icon: 'Sp',
+    tier: 2,
+    tags: ['amount'],
+    text: 'Your crewmate stops copying your weapons. Instead you get an extra weapon slot, and the crewmate wields the weapon in it at full strength.',
+    apply: flag('crewSpecialist'),
+  },
+  {
+    id: 'secondMate',
+    name: 'Second Mate',
+    icon: '2M',
+    tier: 2,
+    tags: ['amount', 'damage'],
+    text: 'A second crewmate joins you, also firing copies of all your weapons.',
+    apply: flag('secondMate'),
+  },
+  {
+    id: 'ammoCrate',
+    name: 'Ammo Crate',
+    icon: 'AC',
+    tier: 2,
+    tags: ['cooldown', 'duration'],
+    text: 'Opening any chest or crate reloads all your weapons and makes them work twice as fast for 3 seconds (longer with duration).',
     hooks: {
       pickup(game, pk) {
-        if (pk.kind !== 'xp') return;
+        if (pk.kind !== 'chest') return;
         const p = game.player;
-        p.counters.haul = (p.counters.haul ?? 0) + pk.value * p.stats.growth;
-        while (p.counters.haul >= 120) {
-          p.counters.haul -= 120;
-          game.spawnPickup('chest', p.x + game.rng.range(-90, 90), p.y + game.rng.range(-90, 90));
-        }
+        reloadAll(p, Infinity);
+        p.addBuff('overclock', 3 * p.stats.duration);
       },
     },
   },
   {
-    id: 'luckyFind',
-    name: 'Lucky Find',
-    icon: 'LF',
-    tier: 1,
-    tags: ['growth'],
-    text: 'Treasure chests give one extra upgrade.',
-    apply: (b, r, p, f) => {
-      f.chestBonus = (f.chestBonus ?? 0) + 1;
-    },
-  },
-  {
-    id: 'magneticSurge',
-    name: 'Magnetic Surge',
-    icon: 'Mg',
-    tier: 1,
-    tags: ['growth', 'magnet'],
-    text: 'Every level-up pulls every pearl in sight to you.',
+    id: 'torpedoRun',
+    name: 'Torpedo Run',
+    icon: 'TR',
+    tier: 2,
+    tags: ['cooldown', 'damage', 'area'],
+    text: 'Every 14 seconds (faster with haste), the ship fires a torpedo through the biggest crowd near you. It tears through everything in its path and bursts at the end.',
     hooks: {
-      levelUp(game) {
+      tick(game, dt) {
         const p = game.player;
-        game.magnetizePearls(p.x, p.y, 1200);
+        const c = p.counters;
+        c.torpedo = (c.torpedo ?? 6) - dt;
+        if (c.torpedo > 0) return;
+        const spot = crowdCenter(game, p.x, p.y, 500, 90);
+        if (!spot) return;
+        c.torpedo = 14 * p.stats.cooldown;
+        const angle = Math.atan2(spot.y - p.y, spot.x - p.x);
+        const damage = shipDamage(p);
+        game.spawnProjectile({
+          x: p.x - Math.cos(angle) * 60,
+          y: p.y - Math.sin(angle) * 60,
+          angle,
+          speed: 520,
+          damage: damage * 0.6,
+          pierce: 999,
+          radius: 9,
+          life: 1.5,
+          knockback: 160,
+          color: '#c9d3da',
+          shape: 'torpedo',
+          kind: 'ship',
+          onEnd: (pr) => game.blast(pr.x, pr.y, 90 * p.stats.area, damage * 1.5, SHIP, { color: '#ffb347', knockback: 240 }),
+        });
+        game.audio.play('harpoon', { big: true });
       },
     },
   },
   {
-    id: 'secondWind',
-    name: 'Second Wind',
-    icon: 'SW',
+    id: 'lifeline',
+    name: 'Lifeline',
+    icon: 'Ll',
     tier: 2,
     tags: ['duration'],
-    text: 'Once per dive, a fatal hit leaves you at 1 health and invulnerable for 2 seconds (longer with duration).',
+    text: 'Once per dive, your crew pulls you out of a fatal hit: you’re left at 30% health, and your crew is knocked out for 20 seconds.',
     hooks: {
       lethal(game) {
         const p = game.player;
-        if (p.counters.secondWindUsed) return false;
-        p.counters.secondWindUsed = true;
-        p.hp = 1;
-        p.invuln = 2 * p.stats.duration;
-        game.announce('Second wind!', 1.5);
+        const crew = crewmates(game);
+        if (p.counters.lifelineUsed || crew.length === 0) return false;
+        p.counters.lifelineUsed = true;
+        p.hp = p.stats.maxHp * 0.3;
+        p.invuln = 1.5;
+        for (const c of crew) c.downUntil = game.time + 20;
+        game.announce('Your crew pulls you out!', 1.8);
         return true;
       },
     },
   },
   {
-    id: 'greed',
-    name: 'Greed',
-    icon: 'Gr',
-    tier: 3,
-    tags: ['growth', 'cooldown'],
-    text: 'Every level-up instantly reloads all your weapons and heals 15% of your health. Chests give one extra upgrade.',
+    id: 'quartermaster',
+    name: 'Quartermaster',
+    icon: 'QM',
+    tier: 2,
+    tags: ['growth'],
+    text: 'Treasure chests and supply crates give one extra upgrade.',
     apply: (b, r, p, f) => {
       f.chestBonus = (f.chestBonus ?? 0) + 1;
     },
+  },
+  {
+    id: 'broadside',
+    name: 'Broadside',
+    icon: 'Bs',
+    tier: 3,
+    tags: ['cooldown', 'area', 'damage'],
+    text: 'Every 30 seconds (faster with haste), the ship fires a full broadside: a line of 10 depth charges straight through the biggest crowd near you.',
+    hooks: {
+      tick(game, dt) {
+        const p = game.player;
+        const c = p.counters;
+        c.broadside = (c.broadside ?? 12) - dt;
+        if (c.broadside > 0) return;
+        const spot = crowdCenter(game, p.x, p.y, 520, 100);
+        if (!spot) return;
+        c.broadside = 30 * p.stats.cooldown;
+        const angle = Math.atan2(spot.y - p.y, spot.x - p.x) + Math.PI / 2; // across the line to the crowd
+        for (let i = 0; i < 10; i++) {
+          const k = (i - 4.5) * 46;
+          game.callIn({ x: spot.x + Math.cos(angle) * k, y: spot.y + Math.sin(angle) * k, delay: 0.6 + i * 0.07, radius: 70 * p.stats.area, damage: shipDamage(p) * 1.5, source: SHIP, color: '#ff8a5c' });
+        }
+        game.announce('Broadside!', 1);
+      },
+    },
+  },
+  {
+    id: 'allHands',
+    name: 'All Hands on Deck',
+    icon: 'AH',
+    tier: 3,
+    tags: ['duration', 'damage'],
+    text: 'Every level-up, your crew fights at full strength for 8 seconds (longer with duration). A specialist works twice as fast instead.',
     hooks: {
       levelUp(game) {
         const p = game.player;
-        reloadAll(p, Infinity);
-        p.heal(p.stats.maxHp * 0.15);
+        p.counters.allHandsUntil = game.time + 8 * p.stats.duration;
       },
     },
   },
 ];
+
+// ------------------------------------------------------------ Old Jory, the Shantyman
+
+export const SONG = { kind: 'song' }; // Jory's song effects: not one of your weapons
+
+/**
+ * Jory's songs. He sings one at a time and moves on every 12 seconds (Encore makes verses
+ * longer). `buff(b, k)` adds to the stat buckets while it's being sung, at strength `k`
+ * (1 normally); `tick(game, dt, k)` does anything else it does. Song talents teach him more.
+ */
+export const SONGS = {
+  haulAway: { name: 'Haul Away', text: 'swim 20% faster', buff: (b, k) => (b.speed += 0.2 * k) },
+  blowTheManDown: { name: 'Blow the Man Down', text: 'weapons recharge 20% faster', buff: (b, k) => (b.haste += 0.2 * k) },
+  leaveHer: {
+    name: 'Leave Her, Johnny',
+    text: 'heal 2 health per second',
+    tick: (game, dt, k) => game.player.heal(2 * k * dt),
+  },
+  drunkenSailor: { name: 'Drunken Sailor', text: '+20% damage', buff: (b, k) => (b.might += 0.2 * k) },
+  wellerman: {
+    name: 'Wellerman',
+    text: 'pearls fly to you from twice as far and are worth 20% more',
+    buff: (b, k) => {
+      b.magnet += 1 * k;
+      b.growth += 0.2 * k;
+    },
+  },
+  southAustralia: { name: 'South Australia', text: '+25% attack speed', buff: (b, k) => (b.attackSpeed += 0.25 * k) },
+  spanishLadies: {
+    name: 'Spanish Ladies',
+    text: 'enemies near you are 30% slower',
+    tick: (game, dt, k) => {
+      const p = game.player;
+      const reach = 170 * p.stats.area;
+      for (const e of game.enemiesNear(p.x, p.y, reach)) {
+        if (!e.dead && (e.x - p.x) ** 2 + (e.y - p.y) ** 2 < reach * reach) e.slow(Math.max(0.4, 1 - 0.3 * k), 0.2);
+      }
+    },
+  },
+};
+export const BASE_SONGS = ['haulAway', 'blowTheManDown', 'leaveHer'];
+
+/** A talent that teaches Jory a song (added to the end of his rotation). */
+const learn = (song) => (b, r, p, f) => {
+  (f.songs ??= []).push(song);
+};
+const songText = (id) => `Jory learns “${SONGS[id].name}”: while he sings it, ${SONGS[id].text}.`;
+
+const JORY = [
+  {
+    id: 'drunkenSailor',
+    name: 'Drunken Sailor',
+    icon: 'DS',
+    tier: 1,
+    tags: ['damage'],
+    text: songText('drunkenSailor'),
+    apply: learn('drunkenSailor'),
+  },
+  {
+    id: 'encore',
+    name: 'Encore',
+    icon: 'En',
+    tier: 1,
+    ranks: 2,
+    tags: ['duration'],
+    text: (r) => `Every song lasts ${r === 1 ? 15 : 18} seconds instead of 12.`,
+    apply: (b, r, p, f) => {
+      f.songLength = 12 + 3 * r;
+    },
+  },
+  {
+    id: 'wellerman',
+    name: 'Wellerman',
+    icon: 'We',
+    tier: 1,
+    tags: ['magnet', 'growth'],
+    text: songText('wellerman'),
+    apply: learn('wellerman'),
+  },
+  {
+    id: 'crescendo',
+    name: 'Crescendo',
+    icon: 'Cr',
+    tier: 1,
+    tags: ['duration'],
+    text: 'Each song builds up: it starts at half strength and ends at one and a half times as strong.',
+    apply: flag('crescendo'),
+  },
+  {
+    id: 'grogRation',
+    name: 'Grog Ration',
+    icon: 'GR',
+    tier: 1,
+    tags: ['cooldown', 'speed'],
+    text: 'Every 30 seconds Jory takes a swig: 4 seconds of every weapon working twice as fast, then 3 seconds of swimming 30% slower.',
+    hooks: {
+      tick(game, dt) {
+        const p = game.player;
+        const c = p.counters;
+        c.grog = (c.grog ?? 20) - dt;
+        if (c.grog > 0) return;
+        c.grog = 30;
+        p.addBuff('overclock', 4);
+        c.hangoverFrom = game.time + 4;
+        c.hangoverUntil = game.time + 7;
+        game.effects.text(p.x, p.y - p.radius - 10, 'Grog!', '#e8a33a', 14);
+      },
+    },
+  },
+  {
+    id: 'southAustralia',
+    name: 'South Australia',
+    icon: 'SA',
+    tier: 1,
+    tags: ['attackSpeed'],
+    text: songText('southAustralia'),
+    apply: learn('southAustralia'),
+  },
+  {
+    id: 'liquidCourage',
+    name: 'Liquid Courage',
+    icon: 'LC',
+    tier: 2,
+    tags: ['health'],
+    text: 'While you are below half health, the song Jory is singing is twice as strong.',
+    apply: flag('liquidCourage'),
+  },
+  {
+    id: 'spanishLadies',
+    name: 'Spanish Ladies',
+    icon: 'SL',
+    tier: 2,
+    tags: ['area'],
+    text: songText('spanishLadies'),
+    apply: learn('spanishLadies'),
+  },
+  {
+    id: 'finale',
+    name: 'Finale',
+    icon: 'Fi',
+    tier: 2,
+    tags: ['area', 'damage'],
+    text: 'Every song ends on a big final note: a blast of sound around you. Its damage grows with your level.',
+    apply: flag('finale'),
+  },
+  {
+    id: 'harmony',
+    name: 'Harmony',
+    icon: 'Hm',
+    tier: 2,
+    tags: ['duration'],
+    text: 'The song before lingers: while Jory sings, the previous song still works at half strength.',
+    apply: flag('harmony'),
+  },
+  {
+    id: 'rumBarrel',
+    name: 'Rum Barrel',
+    icon: 'RB',
+    tier: 2,
+    tags: ['area', 'damage'],
+    text: 'Every time the song changes, Jory leaves a rum barrel behind. It blows up when an enemy touches it.',
+    apply: flag('rumBarrel'),
+  },
+  {
+    id: 'callAndResponse',
+    name: 'Call and Response',
+    icon: 'CR',
+    tier: 2,
+    tags: ['cooldown'],
+    text: 'Every time the song changes, all your weapons reload at once.',
+    apply: flag('callAndResponse'),
+  },
+  {
+    id: 'seaLegs',
+    name: 'Sea Legs',
+    icon: 'SL',
+    tier: 2,
+    tags: ['duration', 'area'],
+    text: 'Every time the song changes, Jory stamps out the beat: enemies around you are knocked back and you are invulnerable for 1 second (longer with duration).',
+    apply: flag('seaLegs'),
+  },
+  {
+    id: 'seaChoir',
+    name: 'Sea Choir',
+    icon: 'SC',
+    tier: 3,
+    tags: ['duration'],
+    text: 'Jory sings two songs at once: the current one and the next.',
+    apply: flag('seaChoir'),
+  },
+  {
+    id: 'ghostChorus',
+    name: 'Ghost Ship Chorus',
+    icon: 'GC',
+    tier: 3,
+    tags: ['cooldown', 'duration'],
+    text: 'Every 60 seconds (faster with haste), the drowned crew of a ghost ship joins in: every song Jory knows plays at once for 8 seconds (longer with duration).',
+    hooks: {
+      tick(game, dt) {
+        const p = game.player;
+        const c = p.counters;
+        c.chorus = (c.chorus ?? 40) - dt;
+        if (c.chorus > 0) return;
+        c.chorus = 60 * p.stats.cooldown;
+        c.chorusUntil = game.time + 8 * p.stats.duration;
+        p.dirty = true;
+        game.announce('The drowned crew sings along', 1.5);
+      },
+    },
+  },
+];
+
+// ------------------------------------------------------------ Coralline, reef-grown
+
+export const REEF = { kind: 'reef' }; // Coralline's coral: not one of your weapons
+export const coralDamage = (p) => (8 + 2 * p.level) * p.stats.might;
+
+const CORAL = [
+  {
+    id: 'thickCoral',
+    name: 'Thick Coral',
+    icon: 'TC',
+    tier: 1,
+    tags: ['health'],
+    text: 'You grow one more coral plate (4 instead of 3).',
+    apply: (b, r, p, f) => {
+      f.extraPlates = (f.extraPlates ?? 0) + 1;
+    },
+  },
+  {
+    id: 'barbedPolyps',
+    name: 'Barbed Polyps',
+    icon: 'BP',
+    tier: 1,
+    ranks: 2,
+    tags: ['damage'],
+    text: (r) => `Enemies that touch you get stung, once a second each${r === 2 ? ', twice as hard' : ''}. The sting grows with your level.`,
+    hooks: {
+      touched(game, e, rank) {
+        const p = game.player;
+        const c = p.counters;
+        c.barbs ??= new Map();
+        if ((c.barbs.get(e.id) ?? 0) > game.time) return;
+        c.barbs.set(e.id, game.time + 1);
+        if (c.barbs.size > 300) for (const [id, t] of c.barbs) if (t <= game.time) c.barbs.delete(id);
+        game.strike(e, coralDamage(p) * 0.5 * rank, REEF, 160, p.x, p.y);
+      },
+    },
+  },
+  {
+    id: 'rapidGrowth',
+    name: 'Rapid Growth',
+    icon: 'RG',
+    tier: 1,
+    ranks: 2,
+    tags: ['duration'],
+    text: (r) => `Broken plates regrow in ${r === 1 ? 6 : 4.5} seconds instead of 8.`,
+    apply: (b, r, p, f) => {
+      f.plateRegrow = r === 1 ? 6 : 4.5;
+    },
+  },
+  {
+    id: 'fireCoral',
+    name: 'Fire Coral',
+    icon: 'FC',
+    tier: 1,
+    tags: ['area', 'damage'],
+    text: 'When a plate breaks, it bursts into stinging shards that hit everything around you. Their damage grows with your level.',
+    apply: flag('fireCoral'),
+  },
+  {
+    id: 'reefSeed',
+    name: 'Reef Seed',
+    icon: 'RS',
+    tier: 1,
+    tags: ['cooldown', 'duration', 'area'],
+    text: 'Every 6 seconds (faster with haste), a coral outcrop grows where you are. Enemies can’t swim through it, so they have to go around. It lasts 12 seconds (longer with duration).',
+    hooks: {
+      tick(game, dt) {
+        const p = game.player;
+        const c = p.counters;
+        c.seed = (c.seed ?? 2) - dt;
+        if (c.seed > 0) return;
+        c.seed = 6 * p.stats.cooldown;
+        game.growReef(p.x - p.facingX * 24, p.y - p.facingY * 24, 26 * p.stats.area, 12 * p.stats.duration);
+      },
+    },
+  },
+  {
+    id: 'symbiosis',
+    name: 'Symbiosis',
+    icon: 'Sy',
+    tier: 1,
+    tags: ['regen'],
+    text: 'Every plate that regrows heals you for 4 health.',
+    apply: flag('symbiosis'),
+  },
+  {
+    id: 'stingingBloom',
+    name: 'Stinging Bloom',
+    icon: 'SB',
+    tier: 1,
+    tags: ['cooldown', 'area', 'duration'],
+    text: 'Every 8 seconds (faster with haste), polyps bloom around you and poison everything close: 3 damage per second for 3 seconds (longer with duration), stacking.',
+    hooks: {
+      tick(game, dt) {
+        const p = game.player;
+        const c = p.counters;
+        c.bloom = (c.bloom ?? 4) - dt;
+        if (c.bloom > 0) return;
+        c.bloom = 8 * p.stats.cooldown;
+        const reach = 140 * p.stats.area;
+        for (const e of game.enemiesNear(p.x, p.y, reach)) {
+          if (!e.dead && (e.x - p.x) ** 2 + (e.y - p.y) ** 2 < (reach + e.radius) ** 2) e.poison(3 * p.stats.might, 3 * p.stats.duration);
+        }
+        game.effects.ring(p.x, p.y, reach, '#e57fb0');
+      },
+    },
+  },
+  {
+    id: 'livingStone',
+    name: 'Living Stone',
+    icon: 'LS',
+    tier: 2,
+    tags: ['duration'],
+    text: 'While you stand still, your plates regrow twice as fast.',
+    apply: flag('livingStone'),
+  },
+  {
+    id: 'overgrowth',
+    name: 'Overgrowth',
+    icon: 'Og',
+    tier: 2,
+    tags: ['health'],
+    text: 'Plates keep growing even when you have them all: up to 2 extra plates on top.',
+    apply: flag('overgrowth'),
+  },
+  {
+    id: 'brainCoral',
+    name: 'Brain Coral',
+    icon: 'BC',
+    tier: 2,
+    tags: ['damage'],
+    text: 'Your coral outcrops sting every enemy that brushes against them, twice a second. The sting grows with your level.',
+    apply: flag('brainCoral'),
+  },
+  {
+    id: 'atoll',
+    name: 'Atoll',
+    icon: 'At',
+    tier: 2,
+    tags: ['duration', 'area'],
+    text: 'Your coral outcrops last twice as long and keep growing, up to twice their size.',
+    apply: flag('atoll'),
+  },
+  {
+    id: 'petrify',
+    name: 'Petrify',
+    icon: 'Pt',
+    tier: 2,
+    tags: ['duration'],
+    text: 'Enemies that break one of your plates are turned to stone: pinned for 1.5 seconds (longer with duration). Bosses can’t be pinned.',
+    apply: flag('petrify'),
+  },
+  {
+    id: 'reefKeeper',
+    name: 'Reef Keeper',
+    icon: 'RK',
+    tier: 2,
+    tags: ['area'],
+    text: 'Enemies near your coral outcrops are 35% slower, and you heal 2 health per second while you stand next to one.',
+    apply: flag('reefKeeper'),
+  },
+  {
+    id: 'greatBarrier',
+    name: 'Great Barrier',
+    icon: 'GB',
+    tier: 3,
+    tags: ['cooldown', 'duration', 'area'],
+    text: 'Every 20 seconds (faster with haste), a ring of coral erupts around you and holds the horde back for 4 seconds (longer with duration).',
+    hooks: {
+      tick(game, dt) {
+        const p = game.player;
+        const c = p.counters;
+        c.barrier = (c.barrier ?? 8) - dt;
+        if (c.barrier > 0 || !game.nearestEnemy(p.x, p.y, 200)) return;
+        c.barrier = 20 * p.stats.cooldown;
+        const ringR = 120 * p.stats.area;
+        const n = 12;
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2;
+          game.growReef(p.x + Math.cos(a) * ringR, p.y + Math.sin(a) * ringR, 24 * p.stats.area, 4 * p.stats.duration);
+        }
+        game.camera.shake(4, 0.2);
+      },
+    },
+  },
+  {
+    id: 'colossus',
+    name: 'Coral Colossus',
+    icon: 'CC',
+    tier: 3,
+    tags: ['duration', 'damage'],
+    text: 'When your last plate breaks, you swell into a coral colossus for 5 seconds (longer with duration): nothing can hurt you, and enemies you touch are crushed and thrown aside.',
+    apply: flag('colossus'),
+    hooks: {
+      touched(game, e) {
+        const p = game.player;
+        if (!((p.counters.colossusUntil ?? -1) > game.time)) return;
+        const c = p.counters;
+        c.crushed ??= new Map();
+        if ((c.crushed.get(e.id) ?? 0) > game.time) return;
+        c.crushed.set(e.id, game.time + 0.5);
+        game.strike(e, coralDamage(p) * 2, REEF, 420, p.x, p.y);
+      },
+    },
+  },
+];
+
+// ------------------------------------------------------------ the Hollow Diver
+
+/**
+ * How many levels a level-up card is worth right now: 1 for everyone but the Hollow Diver, whose
+ * cards are 25% stronger (75% with One Path), 10% more per empty passive slot (Empty Suit), and
+ * 3% more for every card taken so far this dive (Bottomless).
+ */
+export function cardStrength(p) {
+  const f = p.flags;
+  if (!f.hollow) return 1;
+  let s = f.onePath ? 1.75 : 1.25;
+  if (f.emptySuit) s += 0.1 * Math.max(0, CONFIG.slots.passives - p.passives.size);
+  if (f.bottomless) s += 0.03 * (p.counters.cardsTaken ?? 0);
+  return s;
+}
+
+const HOLLOW = [
+  {
+    id: 'spitItOut',
+    name: 'Spit It Out',
+    icon: 'SO',
+    tier: 1,
+    ranks: 2,
+    text: (r) => `Don’t like either card? Spit them out and draw new ones, ${r === 1 ? 3 : 5} times a dive.`,
+    apply: (b, r, p, f) => {
+      f.rerolls = r === 1 ? 3 : 5;
+    },
+  },
+  {
+    id: 'hollowOut',
+    name: 'Hollow Out',
+    icon: 'HO',
+    tier: 1,
+    text: 'On the level-up screen, you can eat one of your weapons. It’s gone and its slot is free, but its talents stay, and so does its trinket’s effect on your other weapons. An eaten weapon never comes back.',
+    apply: flag('hollowOut'),
+  },
+  {
+    id: 'gorge',
+    name: 'Gorge',
+    icon: 'Gg',
+    tier: 1,
+    text: 'Every 5th level-up, you take both cards.',
+    apply: flag('gorge'),
+  },
+  {
+    id: 'emptySuit',
+    name: 'Empty Suit',
+    icon: 'ES',
+    tier: 1,
+    text: 'Each empty passive slot makes your cards another 10% stronger.',
+    apply: flag('emptySuit'),
+  },
+  {
+    id: 'gildedHunger',
+    name: 'Gilded Hunger',
+    icon: 'GH',
+    tier: 1,
+    text: 'Every chest holds one more upgrade.',
+    apply: (b, r, p, f) => {
+      f.chestBonus = (f.chestBonus ?? 0) + 1;
+    },
+  },
+  {
+    id: 'aftertaste',
+    name: 'Aftertaste',
+    icon: 'Af',
+    tier: 1,
+    text: 'The card you pass up comes back at your next level-up, 50% stronger instead of 25%.',
+    apply: flag('aftertaste'),
+  },
+  {
+    id: 'pourOut',
+    name: 'Pour Out',
+    icon: 'PO',
+    tier: 1,
+    text: 'On the level-up screen, you can pour out one of your passives. It’s gone and its slot is free, and everything it was worth is shared out among your other passives.',
+    apply: flag('pourOut'),
+  },
+  {
+    id: 'onePath',
+    name: 'One Path',
+    icon: 'OP',
+    tier: 2,
+    text: 'Level-ups show only 1 card, but it’s 75% stronger instead of 25%.',
+    apply: (b, r, p, f) => {
+      f.onePath = true;
+      f.cardCount = 1;
+    },
+  },
+  {
+    id: 'devour',
+    name: 'Devour',
+    icon: 'Dv',
+    tier: 2,
+    tags: ['health'],
+    text: 'You eat the card you pass up: it heals you for 10 health.',
+    apply: flag('devour'),
+  },
+  {
+    id: 'overflow',
+    name: 'Overflow',
+    icon: 'Ov',
+    tier: 2,
+    text: 'Cards for passives you’ve maxed keep coming. Taking one pours it into your weakest passive.',
+    apply: flag('overflow'),
+  },
+  {
+    id: 'twinSockets',
+    name: 'Twin Sockets',
+    icon: 'TS',
+    tier: 2,
+    text: 'Each weapon holds two trinkets, but trinket picks show 2 instead of 3.',
+    apply: (b, r, p, f) => {
+      f.twinSockets = true;
+      f.trinketCount = 2;
+    },
+  },
+  {
+    id: 'lastMeal',
+    name: 'Last Meal',
+    icon: 'LM',
+    tier: 2,
+    text: 'Once a dive, when you would die, you eat your next level-up instead and get back up at half health.',
+    hooks: {
+      lethal(game) {
+        const p = game.player;
+        const c = p.counters;
+        if (c.lastMealUsed) return false;
+        c.lastMealUsed = true;
+        c.mealDebt = (c.mealDebt ?? 0) + 1; // the next level-up is skipped (Game.openLevelUp)
+        p.hp = p.stats.maxHp * 0.5;
+        p.invuln = 2;
+        game.effects.burst(p.x, p.y, '#8c7ae6', 24, 220);
+        game.audio.play('chomp');
+        game.announce('Last Meal!', 1.6);
+        return true;
+      },
+    },
+  },
+  {
+    id: 'innerShrine',
+    name: 'Inner Shrine',
+    icon: 'IS',
+    tier: 2,
+    text: 'The suit gets a trinket socket of its own. A trinket there works on every weapon you carry as if it were attached to each one, but loses its effect on your other weapons.',
+    apply: flag('innerShrine'),
+  },
+  {
+    id: 'nothingWasted',
+    name: 'Nothing Wasted',
+    icon: 'NW',
+    tier: 3,
+    text: 'At every level-up you take both cards: the one you pick, and the other at normal strength.',
+    apply: flag('nothingWasted'),
+  },
+  {
+    id: 'bottomless',
+    name: 'Bottomless',
+    icon: 'Bt',
+    tier: 3,
+    text: 'Every card you take is 3% stronger than the one before, with no limit.',
+    apply: flag('bottomless'),
+  },
+];
+
+const ROV = { kind: 'rov' }; // Otto's own drone (Laser Sweep): not one of your weapons
 
 const OTTO = [
   {
@@ -171,24 +935,171 @@ const OTTO = [
     },
   },
   {
+    id: 'autoLoader',
+    name: 'Auto-Loader',
+    icon: 'AL',
+    tier: 1,
+    ranks: 2,
+    tags: ['cooldown'],
+    text: (r) => `Every ${r === 1 ? '4th' : '3rd'} attack of each weapon reloads it at once.`,
+    hooks: {
+      weaponFire(game, w, rank) {
+        const c = game.player.counters;
+        c.loads ??= {};
+        c.loads[w.id] = (c.loads[w.id] ?? 0) + 1;
+        if (c.loads[w.id] % (rank === 1 ? 4 : 3) === 0) w.timer = 0;
+      },
+    },
+  },
+  {
     id: 'emergencyVenting',
     name: 'Emergency Venting',
     icon: 'EV',
     tier: 1,
+    ranks: 2,
     tags: ['area', 'duration'],
-    text: 'When you get hit, your suit vents a blast that throws nearby enemies back and pins them for 0.5 seconds.',
+    text: (r) =>
+      r === 1
+        ? 'When you get hit, your suit vents a blast that throws nearby enemies back and pins them for 0.5 seconds.'
+        : 'When you get hit, your suit vents a bigger blast that throws nearby enemies back and pins them for 1 second.',
     hooks: {
-      hurt(game) {
+      hurt(game, dmg, rank) {
         const p = game.player;
-        const reach = 140 * p.stats.area;
+        const reach = 140 * p.stats.area * (rank === 2 ? 1.4 : 1);
         const near = game
           .enemiesNear(p.x, p.y, reach)
           .filter((e) => !e.dead && (e.x - p.x) ** 2 + (e.y - p.y) ** 2 < reach * reach);
         for (const e of near) {
           e.knock(420, p.x, p.y);
-          e.root(0.5 * p.stats.duration);
+          e.root(0.5 * rank * p.stats.duration);
         }
         game.effects.ring(p.x, p.y, reach, '#7fe7ff');
+      },
+    },
+  },
+  {
+    id: 'signalBoost',
+    name: 'Signal Boost',
+    icon: 'SB',
+    tier: 1,
+    tags: ['duration', 'damage'],
+    text: 'When a marked enemy dies, its mark jumps to the nearest enemy close by, for at least 1 second.',
+    hooks: {
+      kill(game, { enemy }) {
+        if (!(enemy.markedUntil > game.time)) return;
+        const next = game.nearestEnemy(enemy.x, enemy.y, 220);
+        if (!next) return;
+        next.mark(Math.max(enemy.markedUntil, game.time + 1), enemy.markedBy);
+        game.effects.beam(enemy.x, enemy.y, next.x, next.y, '#7ff9ff', 1);
+      },
+    },
+  },
+  {
+    id: 'fieldRepairs',
+    name: 'Field Repairs',
+    icon: 'FR',
+    tier: 1,
+    tags: ['regen', 'duration'],
+    text: 'Stand still for a second and your suit starts repairing itself: 1.5 health per second, plus double your normal regeneration on top.',
+    hooks: {
+      tick(game, dt) {
+        const p = game.player;
+        const c = p.counters;
+        c.still = p.moving ? 0 : (c.still ?? 0) + dt;
+        if (c.still >= 1 && !p.dead) p.heal((1.5 + 2 * p.stats.regen) * dt);
+      },
+    },
+  },
+  {
+    id: 'laserSweep',
+    name: 'Laser Sweep',
+    icon: 'LS',
+    tier: 1,
+    tags: ['cooldown', 'amount', 'damage'],
+    text: 'Every 6 seconds (faster with haste), the drone docked on your back sweeps a laser across the 3 nearest enemies (one more per amount). Its damage grows with your level.',
+    hooks: {
+      tick(game, dt) {
+        const p = game.player;
+        const c = p.counters;
+        c.sweep = (c.sweep ?? 2) - dt;
+        if (c.sweep > 0) return;
+        const reach = 280 * p.stats.area;
+        const targets = game
+          .enemiesNear(p.x, p.y, reach)
+          .filter((e) => !e.dead && (e.x - p.x) ** 2 + (e.y - p.y) ** 2 < reach * reach)
+          .sort((a, b) => (a.x - p.x) ** 2 + (a.y - p.y) ** 2 - ((b.x - p.x) ** 2 + (b.y - p.y) ** 2))
+          .slice(0, 3 + p.stats.amount);
+        if (targets.length === 0) return;
+        c.sweep = 6 * p.stats.cooldown;
+        const damage = (6 + 1.2 * p.level) * p.stats.might;
+        const fromX = p.x - p.facingX * 8;
+        const fromY = p.y - p.facingY * 8 - 6;
+        for (const e of targets) {
+          game.effects.beam(fromX, fromY, e.x, e.y, '#7ff9ff', 2);
+          game.strike(e, damage, ROV, 40, p.x, p.y);
+        }
+        game.audio.play('droneShot');
+      },
+    },
+  },
+  {
+    id: 'towCable',
+    name: 'Tow Cable',
+    icon: 'TC',
+    tier: 2,
+    tags: ['speed'],
+    text: 'When you get hit, your ROV tows you a short way out of the fight (at most once every 4 seconds).',
+    hooks: {
+      hurt(game) {
+        const p = game.player;
+        const c = p.counters;
+        if ((c.towReady ?? 0) > game.time) return;
+        c.towReady = game.time + 4;
+        const e = game.nearestEnemy(p.x, p.y, 200);
+        c.tow = { left: 0.18, angle: e ? Math.atan2(p.y - e.y, p.x - e.x) : Math.atan2(-p.facingY, -p.facingX) };
+      },
+      tick(game, dt) {
+        const p = game.player;
+        const tow = p.counters.tow;
+        if (!tow || tow.left <= 0) return;
+        tow.left -= dt;
+        p.x += Math.cos(tow.angle) * 480 * dt;
+        p.y += Math.sin(tow.angle) * 480 * dt;
+      },
+    },
+  },
+  {
+    id: 'calibration',
+    name: 'Calibration',
+    icon: 'Ca',
+    tier: 2,
+    tags: ['cooldown', 'damage'],
+    text: 'After every level-up, each of your weapons’ next attack is overcharged for double damage.',
+    hooks: {
+      levelUp(game) {
+        game.player.counters.calibrated = new Set(game.player.weapons.map((w) => w.id)); // used in game.weaponFired
+      },
+    },
+  },
+  {
+    id: 'sensorBuoy',
+    name: 'Sensor Buoy',
+    icon: 'Bu',
+    tier: 2,
+    tags: ['cooldown', 'area', 'duration'],
+    text: 'Every 10 seconds (faster with haste), you drop a sensor buoy that marks every enemy around it for 3 seconds (longer with duration). Marked enemies take 20% more damage from all your weapons.',
+    hooks: {
+      tick(game, dt) {
+        const p = game.player;
+        const c = p.counters;
+        c.buoy = (c.buoy ?? 4) - dt;
+        if (c.buoy > 0) return;
+        const reach = 150 * p.stats.area;
+        const near = game.enemiesNear(p.x, p.y, reach).filter((e) => !e.dead && (e.x - p.x) ** 2 + (e.y - p.y) ** 2 < reach * reach);
+        if (near.length === 0) return;
+        c.buoy = 10 * p.stats.cooldown;
+        for (const e of near) e.mark(game.time + 3 * p.stats.duration, 'buoy');
+        game.effects.ring(p.x, p.y, reach, '#7ff9ff');
       },
     },
   },
@@ -197,15 +1108,58 @@ const OTTO = [
     name: 'Cascade',
     icon: 'Cs',
     tier: 2,
+    ranks: 2,
     tags: ['duration', 'damage'],
-    text: 'When a weapon kills, your other weapons deal 30% more damage for 1 second (longer with duration).',
+    text: (r) => `When a weapon kills, your other weapons deal 30% more damage for ${r} second${r > 1 ? 's' : ''} (longer with duration).`,
     hooks: {
-      kill(game, { source }) {
+      kill(game, { source }, rank) {
         const kind = sourceKind(source);
         if (!kind) return;
         const c = game.player.counters;
         c.cascadeFrom = kind;
-        c.cascadeUntil = game.time + game.player.stats.duration;
+        c.cascadeUntil = game.time + rank * game.player.stats.duration;
+      },
+    },
+  },
+  {
+    id: 'failsafe',
+    name: 'Failsafe',
+    icon: 'Fs',
+    tier: 2,
+    tags: ['duration', 'area'],
+    text: 'Once every 30 seconds, a hit that drops you below 30% health makes you invulnerable for 1.5 seconds (longer with duration) and blasts nearby enemies away.',
+    hooks: {
+      hurt(game) {
+        const p = game.player;
+        const c = p.counters;
+        if (p.hp <= 0 || p.hp > p.stats.maxHp * 0.3 || (c.failsafeReady ?? 0) > game.time) return;
+        c.failsafeReady = game.time + 30;
+        p.invuln = Math.max(p.invuln, 1.5 * p.stats.duration);
+        const reach = 170 * p.stats.area;
+        for (const e of game.enemiesNear(p.x, p.y, reach)) {
+          if (!e.dead && (e.x - p.x) ** 2 + (e.y - p.y) ** 2 < reach * reach) e.knock(480, p.x, p.y);
+        }
+        game.effects.ring(p.x, p.y, reach, '#ffd166');
+        game.announce('Failsafe!', 1);
+      },
+    },
+  },
+  {
+    id: 'uplinkRelay',
+    name: 'Uplink Relay',
+    icon: 'UR',
+    tier: 2,
+    tags: ['cooldown', 'duration'],
+    text: 'Every hit a weapon lands on a marked enemy brings that weapon 0.05 seconds closer to firing.',
+    hooks: {
+      hit(game, { enemy, projectile }) {
+        if (!(enemy.markedUntil > game.time)) return;
+        const id = weaponOf(projectile);
+        if (id === 'drones') game.hastenLaunch(0.05); // drones keep their floor, so lasers can't loop
+        else if (id) {
+          const w = game.player.getWeapon(id);
+          if (w) w.timer -= 0.05;
+        }
       },
     },
   },
@@ -1116,7 +2070,7 @@ const EYE = [
 
 // =================================================================== lookup
 
-export const CHARACTER_TALENTS = { mara: MARA, otto: OTTO };
+export const CHARACTER_TALENTS = { otto: OTTO, captain: CAPTAIN, jory: JORY, coral: CORAL, hollow: HOLLOW };
 export const WEAPON_TALENTS = {
   harpoon: HARPOON,
   drones: DRONES,
@@ -1133,22 +2087,8 @@ export const WEAPON_TALENTS = {
   eye: EYE,
 };
 
-/** Offered when everything else has been taken. */
-export const FALLBACK_TALENT = {
-  id: 'grit',
-  name: 'Grit',
-  icon: '+',
-  tier: 1,
-  ranks: 99,
-  tags: [],
-  text: 'Heal 30 health.',
-  onPick(game) {
-    game.player.heal(30);
-  },
-};
-
 // Every talent by id, plus who it belongs to (shown on the card).
-const BY_ID = new Map([[FALLBACK_TALENT.id, FALLBACK_TALENT]]);
+const BY_ID = new Map();
 for (const [owner, list] of [...Object.entries(CHARACTER_TALENTS), ...Object.entries(WEAPON_TALENTS)]) {
   for (const t of list) {
     if (BY_ID.has(t.id)) throw new Error(`Duplicate talent id "${t.id}"`);
@@ -1161,3 +2101,7 @@ export function findTalent(id) {
   return BY_ID.get(id);
 }
 
+/** A talent's description at `rank` (multi-rank talents describe each rank). */
+export function talentText(t, rank = 1) {
+  return typeof t.text === 'function' ? t.text(Math.max(1, rank)) : t.text;
+}

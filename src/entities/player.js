@@ -3,12 +3,13 @@ import { TAU } from '../core/math.js';
 import { HEROES } from '../data/heroes.js';
 import { PASSIVES } from '../data/passives.js';
 import { findTalent } from '../data/talents.js';
-import { trinketSource } from '../data/trinkets.js';
+import { trinketSources } from '../data/trinkets.js';
 import { drawDiver } from '../render/sprites.js';
 import { Weapon } from './weapon.js';
 
 export class Player {
-  constructor(x, y, heroId) {
+  /** `loadout`: the talents taken in this character's and every weapon's tree (systems/progression.js). */
+  constructor(x, y, heroId, loadout = { character: {}, weapons: {} }) {
     this.heroId = heroId;
     this.hero = HEROES[heroId];
     if (!this.hero) throw new Error(`Unknown character "${heroId}"`);
@@ -23,7 +24,15 @@ export class Player {
 
     this.weapons = [];
     this.passives = new Map(); // passive id -> level
-    this.talents = new Map(); // talent id -> rank
+    // Passive id -> how many levels its cards were worth. Only differs from the level for the
+    // Hollow Diver, whose cards are stronger; stats use this.
+    this.passivePower = new Map();
+    this.eaten = []; // weapons the Hollow Diver ate (Hollow Out): their talents and trinkets stay
+    this.shrine = null; // the trinket in the Hollow Diver's suit (Inner Shrine)
+    this.everCarried = 1; // most weapons carried at once this dive (the Hollow Diver's unlock)
+    this.loadout = loadout;
+    this.talents = new Map(); // talent id -> rank: the character's tree plus the trees of the weapons you carry
+    this.diveXp = 0; // XP collected this dive (banked into the character's level when it ends)
     this.buffs = new Map(); // buff id -> seconds left
     this.counters = {}; // per-dive memory for talents (e.g. "second wind used")
     this.droneCount = 0; // kept up to date by the game
@@ -46,7 +55,8 @@ export class Player {
   }
 
   get weaponSlots() {
-    return CONFIG.slots.weapons + (this.flags.juryRig ? 1 : 0);
+    // Jury-Rig: one more slot. Specialist (the Captain): one more slot, wielded by the crewmate.
+    return CONFIG.slots.weapons + (this.flags.juryRig ? 1 : 0) + (this.flags.crewSpecialist ? 1 : 0);
   }
 
   /** Everything that changes stats or reacts to events, in a fixed order. */
@@ -57,9 +67,18 @@ export class Player {
     ];
     // Some weapons can carry a built-in passive while you own them (`apply` on the weapon).
     for (const w of this.weapons) if (w.def.apply) list.push({ apply: w.def.apply, rank: w.level });
-    for (const [id, level] of this.passives) list.push({ apply: PASSIVES[id].apply, rank: level });
-    for (const [id, rank] of this.talents) list.push({ ...findTalent(id), rank });
-    for (const w of this.weapons) if (w.trinket) list.push(trinketSource(w));
+    for (const [id, level] of this.passives) list.push({ apply: PASSIVES[id].apply, rank: this.passivePower.get(id) ?? level });
+    // Talents: the character's tree, plus the trees of the weapons you carry (and have eaten).
+    const talents = new Map(Object.entries(this.loadout.character ?? {}));
+    for (const w of [...this.weapons, ...this.eaten]) for (const [id, rank] of Object.entries(this.loadout.weapons?.[w.id] ?? {})) talents.set(id, rank);
+    this.talents = talents;
+    for (const [id, rank] of talents) {
+      const t = findTalent(id);
+      if (t && rank > 0) list.push({ ...t, rank });
+    }
+    // The trinket in the Hollow Diver's suit works on every weapon you carry.
+    for (const w of this.weapons) w.shrine = this.shrine?.trinket ?? null;
+    for (const w of [...this.weapons, ...this.eaten]) list.push(...trinketSources(w));
     return list;
   }
 
@@ -124,15 +143,6 @@ export class Player {
     return handled;
   }
 
-  /** Tags of everything you own, used to steer talent offers toward your build. */
-  tagSet() {
-    const tags = new Set();
-    for (const w of this.weapons) for (const t of w.def.tags ?? []) tags.add(t);
-    for (const id of this.passives.keys()) for (const t of PASSIVES[id].tags ?? []) tags.add(t);
-    for (const id of this.talents.keys()) for (const t of findTalent(id)?.tags ?? []) tags.add(t);
-    return tags;
-  }
-
   addBuff(id, seconds) {
     this.buffs.set(id, Math.max(this.buffs.get(id) ?? 0, seconds));
   }
@@ -141,13 +151,31 @@ export class Player {
     return (this.buffs.get(id) ?? 0) > 0;
   }
 
-  addTalent(id) {
-    this.talents.set(id, (this.talents.get(id) ?? 0) + 1);
+  /** Take passive `id` at `level`; `strength` is how many levels that card is worth (stronger cards). */
+  setPassive(id, level, strength = 1) {
+    const before = this.passivePower.get(id) ?? this.passives.get(id) ?? 0;
+    this.passives.set(id, level);
+    this.passivePower.set(id, before + strength);
     this.recalcStats();
   }
 
-  setPassive(id, level) {
-    this.passives.set(id, level);
+  /** Hollow Out: eat the weapon in slot `index`. Its slot frees up; its talents and trinkets stay. */
+  eatWeapon(index) {
+    const [w] = this.weapons.splice(index, 1);
+    if (!w) return null;
+    w.shrine = null;
+    this.eaten.push(w);
+    this.recalcStats();
+    return w;
+  }
+
+  /** Pour Out: drop passive `id` and pour everything it was worth into your other passives. */
+  pourPassive(id) {
+    const power = this.passivePower.get(id) ?? this.passives.get(id) ?? 0;
+    this.passives.delete(id);
+    this.passivePower.delete(id);
+    const rest = [...this.passives.keys()];
+    for (const other of rest) this.passivePower.set(other, (this.passivePower.get(other) ?? this.passives.get(other)) + power / rest.length);
     this.recalcStats();
   }
 
@@ -173,21 +201,30 @@ export class Player {
       else this.buffs.set(id, left - dt);
     }
 
-    // Air bubbles from the helmet (visual only)
+    // Air bubbles from the helmet (visual only). The Hollow Diver doesn't breathe: dark wisps
+    // leak from its seams instead.
     this.bubbleTimer -= dt;
     if (this.bubbleTimer <= 0) {
-      this.bubbleTimer = 0.35 + Math.random() * 0.5;
-      game.effects.bubble(this.x - this.facingX * 6, this.y - this.facingY * 6 - 6);
+      const wisps = this.hero.palette.wisps;
+      this.bubbleTimer = wisps ? 0.12 + Math.random() * 0.2 : 0.35 + Math.random() * 0.5;
+      if (wisps) game.effects.wisp(this.x + (Math.random() - 0.5) * 18, this.y + (Math.random() - 0.5) * 18);
+      else game.effects.bubble(this.x - this.facingX * 6, this.y - this.facingY * 6 - 6);
     }
 
     // Overclock (talent) makes every weapon work twice as fast for a while.
     const weaponDt = this.hasBuff('overclock') ? dt * 2 : dt;
-    for (const w of this.weapons) w.update(weaponDt, game);
+    // With the Captain's Specialist, the weapon in the last slot belongs to the crewmate, who fires it.
+    const crewSlot = this.flags.crewSpecialist ? this.weaponSlots - 1 : -1;
+    this.weapons.forEach((w, i) => {
+      w.crew = i === crewSlot;
+      if (!w.crew) w.update(weaponDt, game);
+    });
     this.trigger('tick', game, dt);
   }
 
   takeDamage(amount, game) {
     if (this.dead || this.god || this.invuln > 0 || game.clearing > 0) return;
+    if (this.trigger('shield', game, amount)) return; // e.g. Nacre's pearl shell takes the hit
     const dmg = Math.max(1, amount - this.stats.armor);
     this.hp = Math.max(0, this.hp - dmg);
     this.invuln = CONFIG.player.invulnTime;
@@ -204,38 +241,69 @@ export class Player {
   }
 
   gainXp(amount, game) {
-    this.xp += amount * this.stats.growth;
+    const gained = amount * this.stats.growth;
+    this.xp += gained;
+    // Between dives, the character levels up from everything collected, and each weapon from
+    // what was collected while it was carried.
+    this.diveXp += gained;
+    for (const w of this.weapons) w.diveXp += gained;
     while (this.xp >= this.xpToNext) {
       this.xp -= this.xpToNext;
       this.level++;
       this.xpToNext = CONFIG.xpToNext(this.level);
-      game.queueLevelUp(this.level % CONFIG.talents.every === 0 ? 'talent' : 'normal');
+      game.queueLevelUp('normal');
       this.trigger('levelUp', game);
     }
   }
 
-  /** Put trinket `trinketId` in weapon `weaponId`'s slot. It stays there for the rest of the dive. */
+  /**
+   * Put trinket `trinketId` in weapon `weaponId`'s slot (or its second socket, with Twin Sockets).
+   * `weaponId` 'suit' is the Hollow Diver's own socket (Inner Shrine). It stays there for the
+   * rest of the dive.
+   */
   attachTrinket(weaponId, trinketId) {
+    if (weaponId === 'suit') {
+      if (!this.flags.innerShrine || this.shrine) return;
+      this.shrine = { trinket: trinketId };
+      this.recalcStats();
+      return;
+    }
     const w = this.getWeapon(weaponId);
-    if (!w || w.trinket) return;
-    w.trinket = trinketId;
-    w.trinketState = {};
+    if (!w) return;
+    if (!w.trinket) {
+      w.trinket = trinketId;
+      w.trinketState = {};
+    } else if (this.flags.twinSockets && !w.trinket2) {
+      w.trinket2 = trinketId;
+      w.trinketState2 = {};
+    } else return;
     this.recalcStats(); // its hooks join the others
   }
 
-  /** Ids of the trinkets you carry (one per weapon at most). */
+  /** How many more trinkets weapon `w` can take (1 normally, 2 with Twin Sockets). */
+  freeSockets(w) {
+    return (w.trinket ? 0 : 1) + (this.flags.twinSockets && !w.trinket2 ? 1 : 0);
+  }
+
+  /** Ids of every trinket found this dive: in your weapons, in the suit, and in weapons you ate. */
   get trinkets() {
-    return this.weapons.filter((w) => w.trinket).map((w) => w.trinket);
+    const ids = [];
+    for (const w of [...this.weapons, ...this.eaten]) ids.push(...[w.trinket, w.trinket2].filter(Boolean));
+    if (this.shrine) ids.push(this.shrine.trinket);
+    return ids;
   }
 
   getWeapon(id) {
     return this.weapons.find((w) => w.id === id);
   }
 
-  addWeapon(id, level = 1) {
+  /** `strength`: how many levels the card that brought it was worth (stronger cards). */
+  addWeapon(id, level = 1, strength = 1) {
     const weapon = new Weapon(id);
     weapon.level = Math.min(level, weapon.maxLevel);
+    if (strength !== 1) weapon.power = weapon.level - 1 + strength;
     this.weapons.push(weapon);
+    this.everCarried = Math.max(this.everCarried, this.weapons.length);
     this.dirty = true;
     return weapon;
   }
