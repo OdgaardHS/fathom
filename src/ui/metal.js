@@ -10,11 +10,17 @@ import { TAU, clamp, createRng, lerp } from '../core/math.js';
 const OUTLINE = '#2a1406';
 
 /**
- * The finish all the metal is made in, picked with a tester: no shine (matte), shallow hammer
- * dents 9 to a 256px tile, a touch of patina, plenty of fine grain. See `hammered` for what each
- * one does; style.css's matte copper and brass colors go with `shine: 0`.
+ * The finishes the metal is made in, each picked with a tester (see `hammered` for what the
+ * numbers do; style.css's matte colors go with `shine: 0`):
+ * - FINISH, the copper plates: matte, shallow hammer dents 9 to a 256px tile, a touch of patina,
+ *   plenty of fine grain.
+ * - BAND_FINISH, the brass band round every plate: not hammered, blotched with patina in big soft
+ *   patches, and darker brass (`tone` below 0 darkens it, above 0 lightens it).
+ * - PLAQUE_FINISH, the bronze plaques the text sits on: big, shallow dents.
  */
 export const FINISH = { shine: 0, depth: 0.27, cells: 9, patina: 0.08, grain: 0.42 };
+export const BAND_FINISH = { shine: 0, depth: 0, cells: 4, patina: 0.78, grain: 0.38, tone: -0.34 };
+export const PLAQUE_FINISH = { shine: 0, depth: 0.21, cells: 3, patina: 0.08, grain: 0.42 };
 
 let cache = null;
 
@@ -23,9 +29,11 @@ export function metal() {
   if (cache) return cache;
   const { shine } = FINISH;
   const surface = hammered(FINISH);
-  const studded = studs(shine);
+  const studded = studs(BAND_FINISH.shine);
   cache = {
     surface,
+    bandSurface: hammered(BAND_FINISH),
+    plaqueSurface: hammered(PLAQUE_FINISH),
     porthole: porthole(256, 8, 0.7, { shine, surface }),
     grille: porthole(256, 8, 0.7, { grille: true, shine, surface }),
     socket: porthole(128, 6, 0.6, { shine, surface }),
@@ -39,19 +47,24 @@ export function metal() {
 
 const patterns = new WeakMap();
 
-/** The hammered surface as a repeating fill for a canvas context (lay it on with 'overlay'). */
-export function surfacePattern(ctx) {
-  if (!patterns.has(ctx)) patterns.set(ctx, ctx.createPattern(metal().surface, 'repeat'));
-  return patterns.get(ctx);
+/**
+ * A surface as a repeating fill for a canvas context (lay it on with 'overlay'): `which` is
+ * 'surface' (the copper's hammering), 'bandSurface' or 'plaqueSurface'.
+ */
+export function surfacePattern(ctx, which = 'surface') {
+  let made = patterns.get(ctx);
+  if (!made) patterns.set(ctx, (made = {}));
+  made[which] ??= ctx.createPattern(metal()[which], 'repeat');
+  return made[which];
 }
 
 /**
- * Hand the sprites to the stylesheet: --surface, --porthole, --grille, --socket, --bolt-row,
- * --rust-l, --rust-r, --screw and --kelp-1 to --kelp-3.
+ * Hand the sprites to the stylesheet: --surface, --band-surface, --plaque-surface, --porthole,
+ * --grille, --socket, --bolt-row, --rust-l, --rust-r, --screw and --kelp-1 to --kelp-3.
  */
 export function installMetal(root = document.documentElement) {
   const m = metal();
-  const vars = { '--surface': m.surface, '--porthole': m.porthole, '--grille': m.grille, '--socket': m.socket, '--bolt-row': m.boltRow, '--rust-l': m.rust[0], '--rust-r': m.rust[1], '--screw': m.screw };
+  const vars = { '--surface': m.surface, '--band-surface': m.bandSurface, '--plaque-surface': m.plaqueSurface, '--porthole': m.porthole, '--grille': m.grille, '--socket': m.socket, '--bolt-row': m.boltRow, '--rust-l': m.rust[0], '--rust-r': m.rust[1], '--screw': m.screw };
   m.kelp.forEach((k, i) => (vars[`--kelp-${i + 1}`] = k));
   for (const [name, canvas] of Object.entries(vars)) {
     canvas.toBlob((blob) => {
@@ -69,22 +82,39 @@ function makeCanvas(w, h = w) {
 
 // ------------------------------------------------ brass
 
-/** Mix two '#rrggbb' colors: `t` 0 is `a`, 1 is `b`. */
+/** A color as [r, g, b], from '#rrggbb' (or already one). */
+const rgbOf = (c) => (typeof c === 'string' ? [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) : c);
+
+/** Mix two colors: `t` 0 is `a`, 1 is `b`. */
+const mix = (a, b, t) => rgbOf(a).map((v, i) => lerp(v, rgbOf(b)[i], t));
+
+const css = (c) => `rgb(${rgbOf(c).map(Math.round).join(', ')})`;
+
+/** Mix two '#rrggbb' colors into a CSS color: `t` 0 is `a`, 1 is `b`. */
 function mixHex(a, b, t) {
-  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
-  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
-  return `rgb(${pa.map((v, i) => Math.round(lerp(v, pb[i], t))).join(', ')})`;
+  return css(mix(a, b, t));
 }
 
-/** Brass across a box, lit from the top left. `shine` 1 is polished; lower is duller. */
-export function brassGradient(ctx, x0, y0, x1, y1, shine = FINISH.shine) {
+/** Lighten (`tone` above 0) or darken (below 0) a color, like the band tester's brass slider. */
+const toned = (c, tone) => (tone >= 0 ? mix(c, '#fffaeb', tone * 0.4) : mix(c, '#140c04', -tone * 0.5));
+
+/**
+ * Brass across a box, lit from the top left. `shine` 1 is polished; lower is duller. `tone`
+ * darkens (below 0) or lightens (above 0) it.
+ */
+export function brassGradient(ctx, x0, y0, x1, y1, shine = FINISH.shine, tone = 0) {
   const g = ctx.createLinearGradient(x0, y0, x1, y1);
-  g.addColorStop(0, mixHex('#dcbd78', '#fff3c4', shine));
-  g.addColorStop(0.22, mixHex('#d6b062', '#f0cb72', shine));
-  g.addColorStop(0.55, '#c99a40');
-  g.addColorStop(0.8, '#8d6620');
-  g.addColorStop(1, '#5e420f');
+  g.addColorStop(0, css(toned(mix('#dcbd78', '#fff3c4', shine), tone)));
+  g.addColorStop(0.22, css(toned(mix('#d6b062', '#f0cb72', shine), tone)));
+  g.addColorStop(0.55, css(toned('#c99a40', tone)));
+  g.addColorStop(0.8, css(toned('#8d6620', tone)));
+  g.addColorStop(1, css(toned('#5e420f', tone)));
   return g;
+}
+
+/** The brass of a plate's band (BAND_FINISH), across a box. */
+export function bandGradient(ctx, x0, y0, x1, y1) {
+  return brassGradient(ctx, x0, y0, x1, y1, BAND_FINISH.shine, BAND_FINISH.tone);
 }
 
 /** A round brass stud: highlight, outline, a speck of shine (less of both when `shine` is low). */

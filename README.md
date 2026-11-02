@@ -339,7 +339,7 @@ Eye's *Evil Eye* setting up a hard-hitting second weapon.
 ```
 index.html            canvas + HTML menus (title, loadout, depths, level-up, pause, game over, cleared)
 style.css             menu styling, like an old diving helmet drawn a little exaggerated: matte,
-                      hand-hammered copper plates in studded brass bands, brass portholes and
+                      hand-hammered copper plates in studded, patina-blotched brass bands, brass portholes and
                       nameplates, dark outlines, rust at the bottom screws, kelp caught on some
                       plates. Text sits on dark bronze plaques screwed onto the copper (`.plaque`,
                       and `.tag-plaque` for single labels), like the ones on statues. Fonts come
@@ -385,8 +385,10 @@ src/
     omens.js          old-god effects any depth can use (the heartbeat)
     debug.js          debug overlay
   ui/                 canvas HUD (hud.js), HTML menus (menus.js), and metal.js, which draws the
-                      hammered metal surface, porthole rings, studs, rusty corner screws and kelp
-                      at startup (its FINISH sets shine, dent depth and size, patina and grain);
+                      hammered metal surfaces, porthole rings, studs, rusty corner screws and kelp
+                      at startup (FINISH for the copper, BAND_FINISH for the brass bands and
+                      PLAQUE_FINISH for the bronze plaques set shine, dent depth and size, patina
+                      and grain);
                       the menus get them as CSS variables, the HUD draws them directly
 ```
 

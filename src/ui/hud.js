@@ -5,7 +5,7 @@ import { PASSIVES } from '../data/passives.js';
 import { TRINKETS, mountsOf } from '../data/trinkets.js';
 import { drawItemIcon } from '../render/icons.js';
 import { formatTime } from './format.js';
-import { BAND as METAL_BAND, bolt, brassGradient, metal, surfacePattern } from './metal.js';
+import { BAND as METAL_BAND, bandGradient, bolt, brassGradient, metal, surfacePattern } from './metal.js';
 
 // The HUD is made of the same matte, hammered copper and brass as the menus (see metal.js and style.css):
 // copper plates in a studded brass band, brass nameplates and rolling counters, brass-framed
@@ -126,11 +126,14 @@ function display(ctx, text, x, y, size) {
 
 // ------------------------------------------------ materials
 
-/** Beat the current path's metal with the hammered surface (metal.js), like the menus' plates. */
-function hammer(ctx) {
+/**
+ * Lay a surface from metal.js over the current path's metal, like the menus' plates: the copper's
+ * hammering, or `which` 'bandSurface' for a plate's brass band.
+ */
+function hammer(ctx, which = 'surface') {
   ctx.save();
   ctx.globalCompositeOperation = 'overlay';
-  ctx.fillStyle = surfacePattern(ctx);
+  ctx.fillStyle = surfacePattern(ctx, which);
   ctx.fill();
   ctx.restore();
 }
@@ -247,8 +250,8 @@ function copperFill(ctx, x, y, width, height) {
 }
 
 /**
- * A hammered copper plate in a hammered brass band studded with bolts, outlined in dark, with a
- * little rust at the two bottom corner screws.
+ * A hammered copper plate in a brass band studded with bolts, outlined in dark, with a little rust
+ * at the two bottom corner screws (the band in metal.js's BAND_FINISH, like the menus').
  */
 function plate(ctx, x, y, width, height) {
   ctx.save();
@@ -258,10 +261,10 @@ function plate(ctx, x, y, width, height) {
   ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
   ctx.shadowBlur = 10;
   ctx.shadowOffsetY = 4;
-  ctx.fillStyle = brassGradient(ctx, 0, y, 0, y + height);
+  ctx.fillStyle = bandGradient(ctx, 0, y, 0, y + height);
   ctx.fill();
   ctx.shadowColor = 'transparent';
-  hammer(ctx);
+  hammer(ctx, 'bandSurface');
   ctx.lineWidth = 2.5;
   ctx.strokeStyle = OUTLINE;
   ctx.stroke();

@@ -1,10 +1,11 @@
 /*
  * Fathom's menus look like an old diving helmet, a little exaggerated: matte, hand-hammered
- * copper plates in a brass band studded with bolts, brass portholes and nameplates, dark
- * outlines. A little rust at the bottom screws, and kelp hanging off some plates.
- * The hammered surface, portholes, studs, rust and kelp are drawn at startup by src/ui/metal.js
- * (in its FINISH) and arrive as the --surface, --porthole, --grille, --socket, --bolt-row,
- * --rust-l, --rust-r, --screw and --kelp-* variables. Text sits on dark bronze plaques screwed
+ * copper plates in a darker, patina-blotched brass band studded with bolts, brass portholes and
+ * nameplates, dark outlines. A little rust at the bottom screws, and kelp hanging off some plates.
+ * The surfaces, portholes, studs, rust and kelp are drawn at startup by src/ui/metal.js (in its
+ * FINISH, BAND_FINISH and PLAQUE_FINISH) and arrive as the --surface, --band-surface,
+ * --plaque-surface, --porthole, --grille, --socket, --bolt-row, --rust-l, --rust-r, --screw and
+ * --kelp-* variables. Text sits on dark bronze plaques screwed
  * onto the copper, like the ones on statues, so it reads easily. The surface goes over the metal with the 'overlay'
  * blend: its lighter parts lift the color, its darker parts sink it.
  */
@@ -42,6 +43,8 @@
 
   /* set by src/ui/metal.js */
   --surface: none;
+  --band-surface: none;
+  --plaque-surface: none;
   --porthole: none;
   --grille: none;
   --socket: none;
@@ -56,6 +59,8 @@
   /* the band round a plate, and the face of nameplates, badges and brass buttons */
   --brass-face: linear-gradient(180deg, var(--brass-hi), var(--brass-1) 24%, var(--brass-2) 58%, var(--brass-3) 88%, var(--brass-4));
   --brass-plate: linear-gradient(180deg, #e8cc8c, #dcb868 30%, #c39640 72%, #96701f);
+  /* the band round a plate: --brass-face a third darker (metal.js's BAND_FINISH tone) */
+  --band-face: linear-gradient(180deg, #bfa56b, #b59654 24%, #a37d36 58%, #76551b 88%, #51390d);
   --copper-face: linear-gradient(160deg, var(--copper-1), var(--copper-2) 36%, var(--copper-3) 74%, var(--copper-4));
   --gauge: radial-gradient(ellipse 120% 100% at 50% 0%, #2b2924, #141310 75%);
   --deep-glass: radial-gradient(ellipse 120% 90% at 50% 0%, #1d5a66, #0b2a31 55%, #04151a);
@@ -93,7 +98,7 @@ body {
 
 /* ---------- Materials ---------- */
 
-/* Hammered copper in a hammered brass band: every plate */
+/* Hammered copper in a patina-blotched brass band: every plate */
 .panel,
 .card,
 .lo-plate,
@@ -107,8 +112,8 @@ body {
     radial-gradient(ellipse 90% 50% at 50% 110%, rgba(74, 22, 6, 0.5), rgba(74, 22, 6, 0) 72%),
     var(--surface),
     var(--copper-face),
-    var(--surface),
-    var(--brass-face);
+    var(--band-surface),
+    var(--band-face);
   /* each plate shows a different patch of the hammering (menus.js sets --tex-x / --tex-y) */
   background-position: 0 0, var(--tex-x, 0) var(--tex-y, 0), 0 0, calc(var(--tex-y, 0px) + 91px) calc(var(--tex-x, 0px) + 37px), 0 0;
   background-size: auto, 256px 256px, auto, 256px 256px, auto;
@@ -226,7 +231,7 @@ body {
   background-image:
     radial-gradient(ellipse 45% 60% at 0% 100%, rgba(96, 150, 118, 0.22), rgba(96, 150, 118, 0) 70%),
     radial-gradient(ellipse 40% 55% at 100% 0%, rgba(96, 150, 118, 0.15), rgba(96, 150, 118, 0) 70%),
-    var(--surface),
+    var(--plaque-surface),
     var(--plaque-face);
   background-size: auto, auto, 160px 160px, auto;
   background-blend-mode: normal, normal, soft-light, normal;
@@ -252,7 +257,7 @@ body {
     var(--screw) 100% 100% / 8px 8px no-repeat;
 }
 
-/* A small plaque for a single label (no room for screws) */
+/* A small plaque for a single label (no room for screws), hammered like the big ones */
 .tag-plaque,
 .hero-role,
 .depth-note,
@@ -262,7 +267,9 @@ body {
   padding: 3px 9px 2px;
   color: var(--bronze-text);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
-  background: var(--plaque-face);
+  background-image: var(--plaque-surface), var(--plaque-face);
+  background-size: 160px 160px, auto;
+  background-blend-mode: soft-light, normal;
   border-radius: 5px;
   box-shadow: inset 0 0 0 1.5px var(--bronze-rim), 0 0 0 1.5px var(--outline), 0 2px 0 1.5px var(--outline);
 }
@@ -915,7 +922,9 @@ kbd {
   padding: 6px 10px;
   color: var(--bronze-text);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
-  background: var(--plaque-face);
+  background-image: var(--plaque-surface), var(--plaque-face);
+  background-size: 160px 160px, auto;
+  background-blend-mode: soft-light, normal;
   border-radius: 7px;
   box-shadow: inset 0 0 0 1.5px var(--bronze-rim), 0 0 0 1.5px var(--outline), 0 2px 0 1.5px var(--outline);
 }
