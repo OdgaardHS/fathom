@@ -1,6 +1,7 @@
 /**
- * Passive items: the diver's own stats (health, speed, armor, regeneration, pickup range, pearl
- * value), offered to every hero on normal level-ups, 4 at most. What makes weapons better is
+ * Passive items: the diver's own stats (health, speed, armor, regeneration, pickup range), offered
+ * to every hero on normal level-ups, 4 at most. (Nothing raises pearl value: more XP from the same
+ * pearls snowballs too easily.) What makes weapons better is
  * weapon augments instead, each for one weapon (data/augments.js).
  *
  * `apply(b, level)` adds to the player's stat buckets (see Player.recalcStats).
@@ -66,17 +67,6 @@ export const PASSIVES = {
     tags: ['armor'],
     apply: (b, l) => {
       b.armor += l;
-    },
-  },
-  insight: {
-    name: 'Insight',
-    icon: 'In',
-    color: '#c0eb75',
-    maxLevel: 5,
-    text: '+8% pearl value',
-    tags: ['growth'],
-    apply: (b, l) => {
-      b.growth += 0.08 * l;
     },
   },
 };

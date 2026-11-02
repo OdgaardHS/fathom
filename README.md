@@ -32,14 +32,15 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
 | --- | --- |
 | WASD / arrow keys | Swim (weapons fire on their own) |
 | Number keys or click | Pick an upgrade or trinket |
-| Click | On the loadout: a porthole to swap diver or weapon, a talent to learn it, a gear slot to see what you've found for it, a piece of gear to wear it (again to take it off) |
-| Right-click | On the loadout: take a point back from a talent |
+| Click | On the loadout: the arrows either side of the diver or the weapon to swap it (or scroll the mouse wheel over it), the diver or the weapon itself to open the Talents window, Equipment to open the Equipment window, an equipment slot to see what you've found for it. In the Talents window, a talent to learn it; in the Equipment window, a piece to wear it (again to take it off) |
+| Right-click | In the Talents window: take a point back from a talent |
 | Drag | On the trinket screen, drag a trinket onto one of your weapons (or press its number, then the weapon's; Esc puts it back) |
 | R | Spit out both level-up cards and draw new ones (the Hollow Diver's *Spit It Out*) |
 | L | Open the loadout from the game-over or cleared screen |
 | Esc / P | Pause (the pause screen also has Music and Sounds on/off buttons) |
 | M | Mute or unmute all sound |
 | Enter | On the loadout: go on to the depths. On the depth screen: dive into the deepest open one |
+| Esc | On the loadout: close an open window, then back to the title |
 | R or Enter | Dive again after dying |
 | F3 or \` | Toggle debug overlay |
 
@@ -68,11 +69,15 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
   Boss: **The Omen**, a giant oarfish whose whole long body hurts
   to touch; it lunges and calls in mackerel. Tease: something enormous passes far beneath you, and on
   its second, closer pass an eye opens and looks up.
-- Depth 2 (Kelp Twilight) isn't built yet, so in normal play you can't reach The Open Blue. Use
-  debug mode (below) to try it.
+- Depth 2 (Kelp Twilight) isn't built yet, so the way leads past it: clearing Sunlit Shallows
+  opens The Open Blue. A depth opens once the nearest built depth above it is cleared.
 - **Mix and match a diver and a weapon.** Before each dive, the **loadout** shows the diver and
-  the starting weapon side by side, each with its talent tree: click a porthole above a column to
-  swap, learn talents right there, then *Choose depth*. Any character can use any weapon.
+  the starting weapon, each between two arrows that step through the ones you have (the mouse wheel
+  works too) and with what it is underneath, the five equipment
+  slots, and an **Equipment** button. Click the diver or the weapon to open the Talents window (its
+  tag reads "+1 Talent" when its tree has points waiting); the Equipment button opens the
+  Equipment window. Both open over the loadout. Then *Choose depth*. Any character
+  can use any weapon.
   - **Characters** each have one passive and a talent tree of their own:
     - **Otto Brask, ROV Pilot**: *Field Engineer*, +20% duration. 90 health. Visor helmet,
       radio antenna, a drone docked on his back and a controller in his hands.
@@ -126,16 +131,17 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
   colored by rarity. Instead of a brass band, the card is framed by a glass pipe in copper fittings
   with fluid of the rarity's color running round it (`src/ui/pipes.js`). A weapon can take any
   number of them. They
-  come in rarities: **common** (+5% to one stat), **uncommon** (+10%), **rare** (+8% to two stats,
-  with a blue edge) and **exotic** (purple: *Plus One*, one more of whatever the weapon makes more
+  come in rarities: **common** (+5% to one stat), **uncommon** (+10%), **rare** (+15% to one stat,
+  in blue) and **exotic** (purple: *Plus One*, one more of whatever the weapon makes more
   of, like one more harpoon per volley or one more jump for the Eel Lance's arcs; Sonar Pulse, which
   has nothing to count, gets +12% to all its stats instead). An augment only boosts stats its weapon
   uses. They're defined in `src/data/augments.js`.
-- **Gear** (see [Gear](#gear)): helmet, suit, gloves, boots and air tank, found by clearing depths
-  and worn from the loadout. Common pieces give a little of one stat; rare and epic pieces belong to
+- **Equipment** (see [Equipment](#equipment)): helmet, suit, gloves, boots and air tank, found by
+  clearing depths and worn from the loadout. Common pieces give a little of one stat; rare and epic pieces belong to
   sets whose bonuses change how a dive plays.
-- **6 passives** for the diver themselves: Vitality, Swiftness, Armor, Recovery, Attractor and
-  Insight, up to 4 at once, offered on level-up cards next to weapons and augments. Pearls are XP.
+- **5 passives** for the diver themselves: Vitality, Swiftness, Armor, Recovery and Attractor, up
+  to 4 at once, offered on level-up cards next to weapons and augments. Pearls are XP. Nothing raises
+  pearl value: more XP from the same pearls snowballs too easily.
 
 ## Weapons
 
@@ -185,12 +191,13 @@ files. Sound starts on your first click or key press, since browsers block audio
 
 ## Talent trees
 
-Between dives you grow stronger through talent trees, shaped like a modern WoW spec tree. They live
-on the **loadout**, the screen between the title and the depths: the diver's tree and the equipped
-weapon's tree side by side (the diver's on the left), each with its level and points. Pointing at a
-talent, a porthole or a name shows what it does on a bronze plaque beside it. To work on another weapon's tree, equip it. A small amber lamp
-on a porthole says that diver or weapon has points waiting. The game-over and cleared screens have
-a **Loadout** button (or press **L**) that says how many points are waiting in all.
+Between dives you grow stronger through talent trees, shaped like a modern WoW spec tree. Click the
+diver or the weapon on the loadout (its tag reads "+1 Talent" when its tree has points waiting) to
+open a window with the diver's tree and the equipped weapon's tree side by side, each with its
+level and points. Pointing at a talent shows what it does on a bronze plaque beside it. To work on
+another weapon's tree, step to it on the loadout; a small amber dot on the arrows says another
+diver or weapon has points waiting. The game-over and cleared screens have a **Loadout** button (or
+press **L**) that says how many points are waiting in all.
 
 - **Points**: your diver levels up from every pearl you collect in a dive, and each weapon from the
   pearls you collect while carrying it. The XP is banked when the dive ends, whether you die, clear
@@ -208,7 +215,7 @@ a **Loadout** button (or press **L**) that says how many points are waiting in a
   on it), or reset the whole tree.
 - **In a dive**, everything you've learned is active from the start. A weapon's talents switch on
   when you pick that weapon up.
-- **Debug mode** (F3) adds a "+1 level" button to each tree on the loadout, for testing.
+- **Debug mode** (F3) adds a "+1 level" button to each tree in the Talents window, for testing.
 
 **Otto's tree** leans into machines: *Scrap Recycler*, *Spotter Uplink*, *Auto-Loader* (every few
 attacks reload at once), *Emergency Venting*, *Signal Boost* (marks jump on when their enemy dies),
@@ -269,7 +276,7 @@ Every hero uses the same stats, and a stat always means the same thing for every
 | attack speed | drones, orbiting weapons and tendrils attack faster | Overdrive augments |
 | area | size of weapons, shots, blasts, clouds and reach | Reach augments |
 | amount | extra projectiles, orbiters, clouds, lures, thrusts, tendrils, eyes and arc jumps; drone lasers hit one more enemy | the exotic *Plus One* augment |
-| growth | pearl (XP) value | Insight, Jory's *Wellerman* |
+| growth | pearl (XP) value | only Jory's *Wellerman* song |
 | magnet, speed, armor, regen, max health | as named | Attractor, Swiftness, Armor, Recovery, Vitality |
 
 Bonuses to the same stat **add**; different stats **multiply**. Haste turns into cooldowns as
@@ -327,15 +334,16 @@ Darts, Conductor Coil on Sonar Pulse next to weapons that hit a lot, the Anglerf
 crowd into Sonar Pulse or the Pistol Shrimp's blasts, Bubble Net's *Soft Target* or the Watching
 Eye's *Evil Eye* setting up a hard-hitting second weapon.
 
-## Gear
+## Equipment
 
-The diver wears gear in five slots: **helmet, suit, gloves, boots and air tank**, one piece each.
-Put it on in the loadout: the diver's column has a row of five sockets under the name. Click one
-to see everything you've found for that slot (in place of the talent tree), click a piece to wear
-it, click it again to take it off, and point at anything to see what it does. Each diver has their
-own gear on; everything you find goes into one stash they all share.
+The diver wears equipment in five slots: **helmet, suit, gloves, boots and air tank**, one piece
+each. The loadout shows the five slots; the **Equipment** button (or a click on a slot) opens the
+Equipment window: the slots on the left, everything you've found for the chosen slot on the right.
+Click a piece to wear it, click it again to take it off, and point at anything to see what it does.
+Each diver has their own equipment on; everything you find goes into one stash they all share.
+(In the code it's called gear: `src/data/gear.js`, `src/systems/gear.js`.)
 
-- **Finding it**: a depth's final boss leaves a chest of gear (it glows violet and drifts over to
+- **Finding it**: a depth's final boss leaves a chest of equipment (it glows violet and drifts over to
   you). Sunlit Shallows gives 2 pieces, The Open Blue 3. The first time you clear a depth, one of
   them is always a set piece. The cleared screen lists what you found.
 - **Fixed numbers**: every piece always gives the same thing.
@@ -344,10 +352,9 @@ own gear on; everything you find goes into one stash they all share.
   (100 for a common, 200 uncommon, 400 rare, 800 epic).
 - **Rarities**, in the augments' colors: **common** (one stat), **uncommon** (two), **rare** and
   **epic** (set pieces). Common and uncommon pieces drop anywhere; set pieces drop from their
-  depth. The Open Blue can't be reached until Kelp Twilight is built, so for now its sets drop in
-  Sunlit Shallows too (epics 3% of the time there).
+  depth.
 
-Common and uncommon pieces: Brass Bonnet (+10% pickup range), Scratched Faceplate (+5% pearl value),
+Common and uncommon pieces: Brass Bonnet (+10% pickup range), Scratched Faceplate (+5% max health),
 Twelve-Bolt Helmet (+1 armor, +8% pickup range), Patched Canvas Suit (+6% max health), Oilskin Suit
 (+0.2 health per second), Quilted Undersuit (+8% max health, +0.15 health per second), Riveted Gloves
 (+4% damage), Greased Gloves (+4% haste), Steelcap Gauntlets (+5% damage, +3% haste), Cork-Soled
@@ -373,11 +380,11 @@ damage, −8% max health; Omen's Shroud: +10% haste, −6% move speed; Omen's Lu
 - **F3** (or add `?debug` to the URL) shows FPS, entity counts, spawn rate and seed, and enables cheats:
   **L** level up, **K** kill every enemy (killing the boss clears the depth), **T** skip 30 seconds,
   **C** open a trinket chest, **G** god mode. While debug mode is on, every built depth is open on
-  the depth map, and an open gear slot on the loadout has a "Find gear" button (one depth's loot).
+  the depth map, and the Equipment window has a "Find equipment" button (one depth's loot).
 - **`?seed=1234`** in the URL replays the same dive: same spawns, drops and upgrade offers (as long
   as you make the same choices).
 - **`window.game`** in the browser console gives you the live game object, e.g. `game.player.hp = 999`.
-- To reset saved progress (depths, diver and weapon levels, talents, gear), run
+- To reset saved progress (depths, diver and weapon levels, talents, equipment), run
   `localStorage.removeItem('fathom:progress')` in the console
   (`fathom:hero` and `fathom:weapon` remember your last picks, `fathom:audio` your sound settings).
 
@@ -418,17 +425,17 @@ src/
     weapons/          one file per newer weapon (eel, ink, trident, bubbles, lure, shrimp,
                       tendrils, eye), plus common.js with helpers they share
     trinkets.js       trinkets: what each does on its weapon and with your other weapons
-    passives.js       the diver's own stats (health, speed, armor, regen, pickup range, pearl value)
+    passives.js       the diver's own stats (health, speed, armor, regen, pickup range)
     augments.js       weapon augments: one weapon each, any number, common to exotic
-    gear.js           gear: every piece, the sets and their bonuses, what each depth drops
+    gear.js           equipment: every piece, the sets and their bonuses, what each depth drops
   entities/           player (stats, talent and trinket hooks), drone, enemy, enemy behaviours,
                       projectile, hazard, pickup, weapon (incl. its trinket slot)
   systems/            spawner, upgrade rolls, progression (levels, talent points, trees),
-                      gear (the stash, copies, loot rolls, what's worn), particles/bubbles &
+                      gear (equipment: the stash, copies, loot rolls, what's worn), particles/bubbles &
                       damage numbers
   render/
-    sprites.js        drawing code for every creature, the drones and the divers (with their gear)
-    icons.js          a small picture for every weapon, passive, trinket and piece of gear
+    sprites.js        drawing code for every creature, the drones and the divers (with their kit)
+    icons.js          a small picture for every weapon, passive, trinket and piece of equipment
                       (HUD, cards, menus)
     themes/           one file per depth's look (shallows.js, openblue.js): floor or
                       depth layers, light, overlay, omens
@@ -489,7 +496,7 @@ that decides which augments it can get, and `scaling.amount` is the text of its 
 `passiveText` for something built in while you carry it. It shows up on the weapon screen and on
 level-up cards automatically.
 
-**A piece of gear or a set:** add it to `GEAR` in `src/data/gear.js` with its slot, rarity, stats
+**A piece of equipment or a set:** add it to `GEAR` in `src/data/gear.js` with its slot, rarity, stats
 and a color for its picture; a set piece also names its `set` and the depth it drops `from`. A
 set's bonuses go in `GEAR_SETS` and work like a talent (flags and hooks). What each depth drops is
 `GEAR_LOOT`.
@@ -533,8 +540,8 @@ in the theme's `omen()` function.
 
 ## Ideas for next steps
 
-- Kelp Twilight, depth 2 (kelp that slows you and hides enemies, ancient stone ruins). Building it
-  makes The Open Blue reachable in normal play.
+- Kelp Twilight, depth 2 (kelp that slows you and hides enemies, ancient stone ruins). Until it's
+  built, clearing Sunlit Shallows leads straight on to The Open Blue.
 - More trinkets (Barnacle Charm, Lens of the Deep, Cleaner Wrasse, Signal Flare, Bubble Net, ...),
   and old-god trinkets with a cost that only drop deeper down
 - More weapons found deeper down, like the Watching Eye

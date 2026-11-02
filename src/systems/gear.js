@@ -66,8 +66,8 @@ export function gearSources(worn) {
 
 // ------------------------------------------------ loot
 
-/** Can `def` drop at `levelId`? Plain items anywhere; set pieces at their depth (or one that borrows its sets). */
-const dropsAt = (def, levelId) => !def.from || def.from === levelId || Boolean(GEAR_LOOT[levelId]?.alsoFrom?.includes(def.from));
+/** Can `def` drop at `levelId`? Plain items anywhere; set pieces only at their depth. */
+const dropsAt = (def, levelId) => !def.from || def.from === levelId;
 
 /** One item of `rarity` that can drop at `levelId` (or the next rarity down, if there's none). */
 function pickItem(levelId, rarity, rng) {

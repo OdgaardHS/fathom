@@ -557,32 +557,6 @@ const PASSIVE_ICONS = {
     paint(ctx, '#6b4416', 1.2);
   },
 
-  insight(ctx) {
-    // an open oyster with a glowing pearl
-    ctx.beginPath();
-    ctx.ellipse(-1, -5, 13, 5.5, -0.32, 0, TAU);
-    paint(ctx, '#9fae8c');
-    ctx.fillStyle = '#e9dde6';
-    ctx.beginPath();
-    ctx.ellipse(-1, -4.5, 10, 3.2, -0.32, 0, TAU);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(0, 4, 14, 8, 0, 0, Math.PI);
-    ctx.closePath();
-    paint(ctx, '#9fae8c');
-    ctx.fillStyle = '#efe3ea';
-    ctx.beginPath();
-    ctx.ellipse(0, 4, 11, 3, 0, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(192, 235, 117, 0.45)';
-    circle(ctx, 0, 2, 7.5);
-    ctx.fill();
-    circle(ctx, 0, 2, 4.6);
-    paint(ctx, '#fbf8ff', 1.2);
-    ctx.fillStyle = '#ffffff';
-    circle(ctx, -1.4, 0.6, 1.4);
-    ctx.fill();
-  },
 };
 
 // ------------------------------------------------------------------ trinkets
@@ -762,7 +736,7 @@ const GEAR_DRAW = {
 // Each item drawn in its slot's shape and its own color; `empty-<slot>` is an empty slot's outline.
 const GEAR_ICONS = Object.fromEntries([
   ...Object.entries(GEAR).map(([id, item]) => [id, (ctx) => GEAR_DRAW[item.slot](ctx, item.color)]),
-  ...GEAR_SLOTS.map((slot) => [`empty-${slot}`, (ctx) => GEAR_DRAW[slot](ctx, '#3d4c52')]),
+  ...GEAR_SLOTS.map((slot) => [`empty-${slot}`, (ctx) => GEAR_DRAW[slot](ctx, '#8aa0a6')]),
 ]);
 
 const ICONS = { weapon: WEAPON_ICONS, passive: PASSIVE_ICONS, trinket: TRINKET_ICONS, gear: GEAR_ICONS };

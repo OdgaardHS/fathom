@@ -2,9 +2,10 @@ import { WEAPONS } from './weapons.js';
 
 /**
  * Weapon augments: level-up cards that make one weapon better. The card names the weapon, and a
- * weapon can take any number of them. They come in rarities: common ones are a small boost to one
- * stat, uncommon ones a bigger one, rare ones boost two stats, and the exotic one changes a
- * different axis entirely (one more harpoon per volley, one more jump for the Eel Lance's arcs...).
+ * weapon can take any number of them. They come in rarities: common, uncommon and rare ones each
+ * boost one stat (a little, more, a lot). Only the exotic one does more than that: it changes a
+ * different axis entirely (one more harpoon per volley, one more jump for the Eel Lance's arcs...),
+ * or for a weapon without one, boosts all its stats.
  *
  * Augments only boost stats the weapon actually uses (its `scaling` in weapons.js). They add to the
  * same stat buckets as everything else, but only for that weapon (see Weapon.boosted).
@@ -21,12 +22,12 @@ export const AUGMENT_STATS = {
 
 /**
  * `weight`: how often a weapon's augment card is of this rarity (out of 100).
- * `value`: the boost to each stat it names (the exotic one adds 1 amount instead).
+ * `value`: the boost to the stat it names (the exotic one adds 1 amount instead).
  */
 export const RARITIES = {
   common: { name: 'Common', color: '#d9c58f', weight: 55, value: 0.05 },
   uncommon: { name: 'Uncommon', color: '#7ad98f', weight: 28, value: 0.1 },
-  rare: { name: 'Rare', color: '#6cb6ff', weight: 13, value: 0.08 },
+  rare: { name: 'Rare', color: '#6cb6ff', weight: 13, value: 0.15 },
   exotic: { name: 'Exotic', color: '#d58cff', weight: 4, value: 0.12 },
 };
 export const RARITY_ORDER = ['common', 'uncommon', 'rare', 'exotic'];
@@ -48,8 +49,8 @@ export function augmentsFor(weaponId) {
     common: stats.map((k) => single(k, 'common')),
     // one stat, more
     uncommon: stats.map((k) => single(k, 'uncommon')),
-    // two stats
-    rare: stats.flatMap((a, i) => stats.slice(i + 1).map((b) => pair(a, b))),
+    // one stat, a lot
+    rare: stats.map((k) => single(k, 'rare')),
     // another axis: one more of whatever the weapon makes more of; a weapon without one gets all
     // of its stats boosted instead
     exotic: [scaling.amount ? plusOne(scaling.amount) : overhaul(stats)],
@@ -66,12 +67,6 @@ function single(stat, rarity) {
   const s = AUGMENT_STATS[stat];
   const v = RARITIES[rarity].value;
   return { key: `${stat}.${rarity}`, boosts: { [stat]: v }, name: s.name, icon: s.icon, text: `${percent(v)} ${s.text}` };
-}
-
-function pair(a, b) {
-  const v = RARITIES.rare.value;
-  const [sa, sb] = [AUGMENT_STATS[a], AUGMENT_STATS[b]];
-  return { key: `${a}+${b}.rare`, boosts: { [a]: v, [b]: v }, name: `${sa.name} & ${sb.name}`, icon: sa.icon, text: `${percent(v)} ${sa.text}, ${percent(v)} ${sb.text}` };
 }
 
 function plusOne(how) {

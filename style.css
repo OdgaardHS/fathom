@@ -101,7 +101,6 @@ body {
 /* Hammered copper in a patina-blotched brass band: every plate */
 .panel,
 .card,
-.lo-plate,
 .depth,
 .loadout {
   position: relative;
@@ -130,7 +129,6 @@ body {
 /* the studs along the top and bottom of the band, and rust at the two bottom corner screws */
 .panel::before,
 .card::before,
-.lo-plate::before,
 .depth::before,
 .loadout::before {
   /* the first stud sits mid-tile, 32px in; the rust sprites (40px, stud at x 20) line up with it */
@@ -582,6 +580,14 @@ kbd {
   font-size: 1.3rem;
 }
 
+/* the title screen's Begin: one word in the heavy slab letters */
+.btn.title-begin {
+  min-width: 220px;
+  padding: 14px 36px 15px;
+  font: 400 1.9rem/1 var(--display);
+  letter-spacing: 0.08em;
+}
+
 .btn kbd {
   font-size: 0.62em;
   margin-left: 4px;
@@ -589,7 +595,10 @@ kbd {
 
 .btn:focus-visible,
 .card:focus-visible,
-.lo-pick:focus-visible {
+.lo-arrow:focus-visible,
+.eq-slot:focus-visible,
+.gear-socket:focus-visible,
+.gear-item:focus-visible {
   outline: 3px solid var(--lamp);
   outline-offset: 5px;
 }
@@ -764,117 +773,312 @@ kbd {
   }
 }
 
-/* ---------- The loadout: diver and weapon side by side, with their talent trees ---------- */
+/* ---------- The loadout: who dives, and with what ---------- */
 
-/* all on one screen: the heading, two columns, the buttons; the trees get whatever height is left */
+/* one plate: the diver and the weapon (click either for the talents), the equipment slots, the Equipment button */
 .lo-panel {
+  max-width: 780px;
+}
+
+.lo-main {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  margin-top: 18px;
+  text-align: left;
+}
+
+.lo-pickers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
+}
+
+.lo-picker {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* the diver or the weapon between its two arrows */
+.lo-cycle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+/* the chosen one: a dark plaque with its picture and name; click it for the talents */
+.lo-select {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
   gap: 12px;
-  max-width: 1380px;
-  height: calc(100vh - 52px);
-  min-height: 600px;
-  padding-bottom: 0;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 12px 8px 8px;
+  font: inherit;
+  text-align: left;
+  border: 0;
+  cursor: pointer;
+  transition: box-shadow 120ms;
+  color: var(--bronze-text);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
+  background-image: var(--plaque-surface), var(--plaque-face);
+  background-size: 160px 160px, auto;
+  background-blend-mode: soft-light, normal;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 2px var(--bronze-rim), 0 0 0 2px var(--outline), 0 3px 0 2px var(--outline);
 }
 
-.panel.bare.lo-panel h2 {
-  margin: 0;
-  font-size: 2rem;
+.lo-select-port {
+  --size: 60px;
 }
 
-/* both columns share the rows, so the plates line up even when one row of portholes wraps */
-.lo-cols {
+.lo-select-text {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 500px));
-  grid-template-rows: auto minmax(0, 1fr);
+  gap: 3px;
+  min-width: 0;
+}
+
+.lo-select-label,
+.lo-select-role {
+  font: 700 0.7rem var(--plate);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bronze-dim);
+}
+
+.lo-select-name {
+  font: 400 1.2rem/1.05 var(--display);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #f1dfb6;
+  overflow-wrap: break-word;
+}
+
+.lo-select:hover {
+  box-shadow: inset 0 0 0 2px var(--lamp), 0 0 0 2px var(--outline), 0 3px 0 2px var(--outline), 0 0 14px rgba(255, 190, 80, 0.5);
+}
+
+/* "Talents", or "+1 Talent" glowing when its tree has points waiting */
+.lo-talents {
+  justify-self: start;
+  margin-top: 3px;
+  padding: 4px 8px 3px;
+  font: 700 0.68rem/1 var(--plate);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--bronze-dim);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--bronze-rim);
+}
+
+.lo-talents.has-points {
+  color: #3a2200;
+  text-shadow: none;
+  background: radial-gradient(circle at 40% 35%, var(--lamp-hot), var(--lamp) 55%, #c27d22);
+  box-shadow: 0 0 10px rgba(255, 190, 80, 0.8), 0 0 0 2px var(--outline);
+}
+
+/* an arrow: a round brass button */
+.lo-arrow {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0 0 3px;
+  font: 400 1.7rem/1 var(--display);
+  color: var(--ink);
+  background-image: var(--surface), var(--brass-plate);
+  background-size: 160px 160px, auto;
+  background-blend-mode: overlay, normal;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 -2px 0 rgba(70, 45, 8, 0.4), 0 0 0 2px var(--outline), 0 3px 0 2px var(--outline);
+  cursor: pointer;
+  transition: transform 100ms, box-shadow 120ms;
+}
+
+.lo-arrow:hover {
+  transform: translateY(-2px);
+  box-shadow: inset 0 -2px 0 rgba(70, 45, 8, 0.4), 0 0 0 2px var(--outline), 0 3px 0 2px var(--outline), 0 0 12px rgba(255, 190, 80, 0.6);
+}
+
+.lo-arrow:active {
+  transform: translateY(1px);
+}
+
+/* another diver or weapon has talent points waiting */
+.lo-arrow-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 11px;
+  height: 11px;
+  background: radial-gradient(circle at 40% 35%, var(--lamp-hot), var(--lamp) 55%, #c27d22);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(255, 190, 80, 0.8), 0 0 0 1.5px var(--outline);
+}
+
+.lo-arrow:disabled {
+  opacity: 0.4;
+  cursor: default;
+  transform: none;
+}
+
+/* what the chosen one is, under it */
+.lo-about {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+}
+
+/* the five equipment slots and the sets worn */
+.lo-equipment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.lo-buttons {
+  display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 12px 22px;
+  gap: 12px;
+}
+
+/* ---------- The loadout's windows: Talents and Equipment ---------- */
+
+.lo-window {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 6, 8, 0.72);
+}
+
+.lo-window-plate {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  width: min(1100px, 100%);
+  max-width: none;
+  height: min(820px, 100%);
+  padding: 16px 18px 18px;
+  text-align: left;
+}
+
+.equipment-window {
+  width: min(900px, 100%);
+  height: min(640px, 100%);
+}
+
+.lo-window-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lo-window-head h2 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+.lo-window-body {
+  min-height: 0;
+}
+
+/* Talents: the diver's tree and the weapon's, side by side */
+.talents-window .lo-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  height: 100%;
   min-height: 0;
 }
 
 .lo-col {
   display: grid;
-  grid-row: span 2;
-  grid-template-rows: subgrid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
   min-width: 0;
   min-height: 0;
 }
 
-/* the portholes to swap the diver or the weapon */
-.lo-picks {
-  display: flex;
-  flex-wrap: wrap;
-  align-content: end;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 4px;
-}
-
-.lo-pick {
-  position: relative;
-  padding: 0;
-  font: inherit;
-  background: none;
-  border: 0;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: transform 100ms, box-shadow 120ms;
-}
-
-.lo-pick .lo-port {
-  --size: 46px;
-}
-
-[data-col='weapon'] .lo-pick .lo-port {
-  --size: 40px;
-}
-
-.lo-pick:hover {
-  transform: translateY(-2px);
-}
-
-.lo-pick:hover .lo-port {
-  background: radial-gradient(circle at 50% 40%, rgba(255, 205, 120, 0.85), #2a5560 44%, #03090b 66%);
-}
-
-/* the equipped one: an amber glow round its ring */
-.lo-pick.active {
-  box-shadow: 0 0 0 3px var(--lamp), 0 0 16px rgba(255, 190, 80, 0.75);
-}
-
-/* not yet found (or the secret diver): behind a barred window */
-.lo-pick.locked {
-  opacity: 0.65;
-  cursor: default;
-  transform: none;
-}
-
-.lo-pick.locked .lo-port {
-  background: radial-gradient(circle at 50% 40%, #26302f, #0b0f0f 66%);
-}
-
-.lo-pick.locked .lo-port::after {
-  background-image: var(--grille);
-}
-
-.lo-pick .tab-points {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  font-size: 0.7rem;
-}
-
-/* The plate: name, level and points across the top, the tree below */
-.lo-plate {
+/* Equipment: the slots on the left, what's found for the open one on the right */
+.equipment-window .lo-window-body {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 18px;
+}
+
+.eq-side {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.eq-slots {
+  display: grid;
+  gap: 7px;
+}
+
+.eq-slot {
+  --accent: var(--bronze-dim);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
   gap: 10px;
-  min-height: 0;
-  padding: 10px 12px 12px;
-  border-radius: 20px;
+  padding: 6px 10px 6px 6px;
+  font: inherit;
+  text-align: left;
+  color: var(--bronze-text);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
+  background-image: var(--plaque-surface), var(--plaque-face);
+  background-size: 160px 160px, auto;
+  background-blend-mode: soft-light, normal;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1.5px var(--bronze-rim), 0 0 0 1.5px var(--outline), 0 2px 0 1.5px var(--outline);
+  cursor: pointer;
+}
+
+.eq-slot.open {
+  box-shadow: inset 0 0 0 2px var(--lamp), 0 0 0 1.5px var(--outline), 0 0 12px rgba(255, 190, 80, 0.5);
+}
+
+.eq-slot .gear-socket {
+  width: 42px;
+  height: 42px;
+  cursor: inherit;
+}
+
+.eq-slot-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.eq-slot-text b {
+  font: 700 0.68rem var(--plate);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bronze-dim);
+}
+
+.eq-slot-text span {
+  font: 700 0.95rem/1.15 var(--plate);
+  letter-spacing: 0.03em;
+  color: var(--accent);
 }
 
 /* the name and the Reset button on top, level and points underneath */
@@ -959,20 +1163,7 @@ kbd {
   overflow: hidden;
 }
 
-/* ---------- Gear (the diver's column of the loadout) ---------- */
-
-/* the diver's plate has a row of gear sockets between the name and the tree */
-.lo-plate.has-gear {
-  grid-template-rows: auto auto minmax(0, 1fr);
-}
-
-.lo-gear {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  min-width: 0;
-}
+/* ---------- Equipment (the loadout's slots, and its Equipment window) ---------- */
 
 .gear-sockets {
   display: flex;
@@ -1011,7 +1202,14 @@ kbd {
 }
 
 .gear-socket.empty .gear-socket-icon {
-  opacity: 0.6;
+  opacity: 0.55;
+}
+
+/* "Gear", at the start of the row */
+.gear-label {
+  font: 700 0.78rem var(--plate);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 /* how many new pieces wait in this slot */
@@ -1287,55 +1485,48 @@ kbd {
   color: var(--bronze-dim);
 }
 
-.lo-actions {
-  margin-top: 0;
-}
-
-/* a narrow window: smaller portholes and heading, so the trees keep their room */
-@media (max-width: 900px) {
-  .panel.bare.lo-panel h2 {
-    font-size: 1.6rem;
-  }
-
-  .lo-pick .lo-port,
-  [data-col='weapon'] .lo-pick .lo-port {
-    --size: 36px;
-  }
-}
-
-/* a phone: one column under the other, each tree a fixed height, and the page scrolls */
-@media (max-width: 600px) {
-  .lo-panel {
-    height: auto;
-    min-height: 0;
-  }
-
-  .lo-cols {
+/* a phone: the diver above the weapon; a window fills the screen, and its parts stack */
+@media (max-width: 640px) {
+  .lo-pickers {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: none;
   }
 
-  .lo-col {
-    grid-row: auto;
-    grid-template-rows: auto auto;
-    gap: 12px;
+  .lo-window {
+    padding: 8px;
   }
 
-  .lo-tree,
-  .gear-stash {
-    height: 400px;
-  }
-}
-
-@media (max-width: 520px) {
-  .lo-tree,
-  .gear-stash {
-    height: 360px;
+  .lo-window-plate,
+  .equipment-window {
+    height: 100%;
   }
 
-  .gear-socket {
-    width: 40px;
-    height: 40px;
+  .talents-window .lo-cols {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .talents-window .lo-tree {
+    height: 380px;
+  }
+
+  .equipment-window .lo-window-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  /* the slots become a row of sockets */
+  .eq-slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .eq-slot {
+    padding: 4px;
+  }
+
+  .eq-slot-text {
+    display: none;
   }
 }
 

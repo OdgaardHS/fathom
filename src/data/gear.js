@@ -34,13 +34,9 @@ export const COPY_BONUS = 0.05; // each copy after the first: +5% to the item's 
 export const MAX_COPIES = 11; // +50%
 export const SCRAP_XP = { common: 100, uncommon: 200, rare: 400, epic: 800 }; // a copy past the cap
 
-/**
- * What clearing each depth drops: how many items, and how likely each rarity is. `alsoFrom`: other
- * depths whose set pieces drop here too. Until Kelp Twilight is built, The Open Blue can't be
- * reached in normal play, so its sets drop in Sunlit Shallows as well (take that out then).
- */
+/** What clearing each depth drops: how many items, and how likely each rarity is. */
 export const GEAR_LOOT = {
-  shallows: { items: 2, odds: { common: 58, uncommon: 30, rare: 9, epic: 3 }, alsoFrom: ['openblue'] },
+  shallows: { items: 2, odds: { common: 60, uncommon: 30, rare: 10, epic: 0 } },
   openblue: { items: 3, odds: { common: 40, uncommon: 32, rare: 20, epic: 8 } },
 };
 
@@ -56,7 +52,6 @@ export const GEAR_STATS = {
   duration: { bucket: 'duration', text: (v) => `${pct(v)} duration` },
   speed: { bucket: 'speed', text: (v) => `${pct(v)} move speed` },
   magnet: { bucket: 'magnet', text: (v) => `${pct(v)} pickup range` },
-  growth: { bucket: 'growth', text: (v) => `${pct(v)} pearl value` },
   armor: { bucket: 'armor', text: (v) => `${flat(v)} armor` },
   regen: { bucket: 'regen', text: (v) => `${flat(v)} health per second` },
 };
@@ -64,7 +59,7 @@ export const GEAR_STATS = {
 export const GEAR = {
   // ---- common and uncommon: plain stats, from any depth
   brassBonnet: { name: 'Brass Bonnet', slot: 'helmet', rarity: 'common', stats: { magnet: 0.1 }, color: '#d6b264' },
-  scratchedFaceplate: { name: 'Scratched Faceplate', slot: 'helmet', rarity: 'common', stats: { growth: 0.05 }, color: '#b9a27a' },
+  scratchedFaceplate: { name: 'Scratched Faceplate', slot: 'helmet', rarity: 'common', stats: { health: 0.05 }, color: '#b9a27a' },
   twelveBolt: { name: 'Twelve-Bolt Helmet', slot: 'helmet', rarity: 'uncommon', stats: { armor: 1, magnet: 0.08 }, color: '#c98a5e' },
 
   canvasSuit: { name: 'Patched Canvas Suit', slot: 'suit', rarity: 'common', stats: { health: 0.06 }, color: '#b8a888' },
@@ -89,12 +84,12 @@ export const GEAR = {
   pearlFins: { name: 'Pearl Diver’s Fins', slot: 'boots', rarity: 'rare', set: 'pearlDiver', from: 'shallows', stats: { speed: 0.04 }, color: '#e8e2d0' },
 
   // ---- Choir of the Drowned (Sunlit Shallows)
-  choirBell: { name: 'Choirmaster’s Bell', slot: 'helmet', rarity: 'rare', set: 'choir', from: 'shallows', stats: { growth: 0.04 }, color: '#7fb3a4' },
+  choirBell: { name: 'Choirmaster’s Bell', slot: 'helmet', rarity: 'rare', set: 'choir', from: 'shallows', stats: { area: 0.05 }, color: '#7fb3a4' },
   choirGloves: { name: 'Conductor’s Gloves', slot: 'gloves', rarity: 'rare', set: 'choir', from: 'shallows', stats: { haste: 0.03 }, color: '#7fb3a4' },
   choirTank: { name: 'Bellows Tank', slot: 'tank', rarity: 'rare', set: 'choir', from: 'shallows', stats: { duration: 0.05 }, color: '#7fb3a4' },
 
   // ---- Lamplighter's Rig (The Open Blue)
-  lampHelmet: { name: 'Lamplighter’s Helmet', slot: 'helmet', rarity: 'rare', set: 'lamplighter', from: 'openblue', stats: { growth: 0.04 }, color: '#ffc35a' },
+  lampHelmet: { name: 'Lamplighter’s Helmet', slot: 'helmet', rarity: 'rare', set: 'lamplighter', from: 'openblue', stats: { magnet: 0.08 }, color: '#ffc35a' },
   lampGloves: { name: 'Wick Gloves', slot: 'gloves', rarity: 'rare', set: 'lamplighter', from: 'openblue', stats: { damage: 0.03 }, color: '#ffc35a' },
   lampTank: { name: 'Oil Tank', slot: 'tank', rarity: 'rare', set: 'lamplighter', from: 'openblue', stats: { duration: 0.05 }, color: '#ffc35a' },
 

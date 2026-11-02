@@ -139,12 +139,7 @@ export class Game {
         const [kind, id] = String(value).split(':');
         this.loadoutAction(() => (kind === 'character' ? this.chooseHero(id) : this.chooseWeapon(id)), 'select');
       },
-      chooseDepth: () => {
-        if (this.state !== 'loadout') return;
-        this.openGearSlot(null); // whatever was new in the open slot has been seen
-        saveProgress(this.progress);
-        this.setState('depths');
-      },
+      chooseDepth: () => this.toDepthsFromLoadout(),
       dive: (id) => this.state === 'depths' && this.startRun(id),
       restart: () => this.state === 'gameover' && this.startRun(this.level.id),
       depths: () => this.toDepths(),
@@ -175,8 +170,10 @@ export class Game {
         const { kind, id } = talentTarget(tree);
         this.loadoutAction(() => this.debugLevelUp(kind, id));
       },
-      // The diver's gear: open a slot's stash (again to close it), wear or take off an item.
-      gearSlot: (slot) => this.loadoutAction(() => this.openGearSlot(slot || null), 'select'),
+      // The loadout's windows: 'talents', 'equipment', or '' to close the one that's open.
+      window: (name) => this.loadoutAction(() => this.openWindow(name || null), 'select'),
+      // Equipment: a slot (opens the Equipment window on it), wear or take off a piece.
+      gearSlot: (slot) => this.loadoutAction(() => this.openEquipment(slot), 'select'),
       gearToggle: (id) => this.loadoutAction(() => toggleGear(this.progress, this.heroId, String(id)), 'trinket'),
       gearDebugLoot: () => this.loadoutAction(() => this.debug && addLoot(this.progress, this.heroId, rollLoot('openblue', { next: Math.random }, true)).length > 0, 'chest'),
       toggleMusic: () => this.toggleAudio('music'),
@@ -360,9 +357,16 @@ export class Game {
     return this.progress.levels[levelId];
   }
 
+  /**
+   * A depth opens once the nearest built depth above it is cleared. Depths that aren't built yet
+   * don't block the way down: clearing Sunlit Shallows opens The Open Blue, past Kelp Twilight.
+   */
   isUnlocked(index) {
     if (this.debug) return true; // debug mode (F3): every built depth is open for testing
-    return index === 0 || Boolean(this.progress.levels[LEVELS[index - 1].id]?.cleared);
+    for (let i = index - 1; i >= 0; i--) {
+      if (isPlayable(LEVELS[i])) return Boolean(this.progress.levels[LEVELS[i].id]?.cleared);
+    }
+    return true;
   }
 
   /** What the depth-select screen shows for each level. */
@@ -398,9 +402,13 @@ export class Game {
   }
 
   depthText() {
-    const below = LEVELS[LEVELS.indexOf(this.level) + 1];
+    const at = LEVELS.indexOf(this.level);
+    const below = LEVELS[at + 1];
     if (!below) return 'There is nothing deeper. Or is there?';
     if (isPlayable(below)) return `${below.name} is now unlocked.`;
+    // not built yet: the way leads past it to the next one that is
+    const next = LEVELS.slice(at + 1).find(isPlayable);
+    if (next) return `${below.name} hasn't been charted yet, so you sink past it: ${next.name} is now unlocked.`;
     return `${below.name} lies below. It hasn't been charted yet.`;
   }
 
@@ -425,8 +433,11 @@ export class Game {
         if (input.wasPressed('Enter', 'Space')) this.setState('loadout');
         break;
       case 'loadout':
-        if (input.wasPressed('Escape')) this.setState('title');
-        else if (input.wasPressed('Enter')) this.setState('depths');
+        // Esc closes an open window, then leaves for the title
+        if (input.wasPressed('Escape')) {
+          if (this.loadoutWindow) this.loadoutAction(() => this.openWindow(null));
+          else this.setState('title');
+        } else if (input.wasPressed('Enter') && !this.loadoutWindow) this.toDepthsFromLoadout();
         break;
       case 'depths':
         if (input.wasPressed('Escape')) this.setState('loadout');
@@ -1574,7 +1585,16 @@ export class Game {
     this.bankDive();
     this.player = null;
     this.resetWorld();
+    this.loadoutWindow = null;
     this.setState('loadout');
+  }
+
+  /** On from the loadout to the depth map (Choose depth, or Enter). */
+  toDepthsFromLoadout() {
+    if (this.state !== 'loadout') return;
+    this.openWindow(null); // whatever was new in the open equipment slot has been seen
+    saveProgress(this.progress);
+    this.setState('depths');
   }
 
   /** Run a loadout change (equip, learn, refund...), save it, and redraw the loadout. */
@@ -1587,12 +1607,22 @@ export class Game {
   }
 
   /**
-   * Open the stash for gear `slot` in the loadout (null closes it; the open one again closes it).
-   * Leaving a slot marks what was new in it as seen.
+   * Open one of the loadout's windows over it: 'talents' (the diver's and the weapon's trees) or
+   * 'equipment' (everything found, slot by slot); null closes it. Leaving the equipment window
+   * marks what was new in its open slot as seen.
    */
-  openGearSlot(slot) {
-    if (this.gearSlot) markSeen(this.progress, this.gearSlot);
-    this.gearSlot = slot && slot !== this.gearSlot ? slot : null;
+  openWindow(name) {
+    if (this.loadoutWindow === 'equipment' && name !== 'equipment' && this.gearSlot) markSeen(this.progress, this.gearSlot);
+    this.loadoutWindow = name;
+    if (name === 'equipment') this.gearSlot ??= 'helmet';
+    return true;
+  }
+
+  /** The Equipment window, on equipment slot `slot` (what was new in the slot it leaves has been seen). */
+  openEquipment(slot) {
+    if (this.gearSlot && this.gearSlot !== slot) markSeen(this.progress, this.gearSlot);
+    this.gearSlot = slot || this.gearSlot || 'helmet';
+    this.loadoutWindow = 'equipment';
     return true;
   }
 
@@ -1613,8 +1643,9 @@ export class Game {
   }
 
   /**
-   * Everything the loadout shows: two columns, the diver's and the weapon's. Each has the
-   * portholes to swap it (with any points waiting on them), what the equipped one is, and its tree.
+   * Everything the loadout shows: every diver and weapon to step through (with any points waiting
+   * on it), what the chosen ones are and their talent trees; the equipment; and which
+   * window is open.
    */
   loadoutView() {
     const free = (kind, id) => treeState(this.progress, kind, id).free;
@@ -1634,6 +1665,8 @@ export class Game {
     });
     return {
       debug: this.debug,
+      window: this.loadoutWindow ?? null,
+      gear: gearView(this.progress, this.heroId, this.loadoutWindow === 'equipment' ? this.gearSlot : null),
       columns: [
         {
           kind: 'character',
@@ -1645,7 +1678,6 @@ export class Game {
           }),
           about: heroAbout(HEROES[this.heroId]),
           tree: this.treeView('character', this.heroId),
-          gear: gearView(this.progress, this.heroId, this.gearSlot ?? null),
         },
         {
           kind: 'weapon',

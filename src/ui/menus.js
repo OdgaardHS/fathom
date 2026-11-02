@@ -57,47 +57,53 @@ export class Menus {
   // ------------------------------------------------ the loadout (between dives)
 
   /**
-   * The loadout: the diver and the weapon you'll dive with, side by side. Each column has a row of
-   * portholes to swap it, its name, level and points, and its talent tree (click a talent to learn
-   * it, right-click to take a point back). Pointing at a talent, a porthole or the name shows what
-   * it does on a bronze plaque beside it.
+   * The loadout: who dives, and with what. The diver and the weapon, each with arrows (or the mouse
+   * wheel) to go through the ones you have and what it is underneath; the five equipment slots; and
+   * two buttons that open windows over it: Talents (the diver's and the weapon's trees side by
+   * side; click a talent to learn it, right-click to take a point back) and Equipment (everything
+   * found, slot by slot). Pointing at a talent, a slot or a piece of equipment shows what it does
+   * on a bronze plaque beside it.
    */
   showLoadout(view) {
     this.loadout = view;
-    this.show('loadout'); // first, so the trees can measure how much room they have
-    const columns = this.screens.loadout.querySelectorAll('[data-col]');
-    view.columns.forEach((col, i) => renderLoadoutColumn(columns[i], col, view.debug));
-    // each tree fits its box, and fits again whenever the box changes size (the window, or the
-    // portholes above it finishing loading)
+    this.show('loadout');
+    const screen = this.screens.loadout;
+    renderLoadoutMain(screen.querySelector('[data-lo-main]'), view);
+    const win = screen.querySelector('[data-lo-window]');
+    win.hidden = !view.window; // shown first, so the trees can measure how much room they have
+    if (view.window === 'talents') renderTalentsWindow(win, view);
+    else if (view.window === 'equipment') renderEquipmentWindow(win, view);
+    else win.replaceChildren();
+    // each tree fits its box, and fits again whenever the box changes size
     this.treeObserver ??= new ResizeObserver((entries) => entries.forEach((e) => fitTree(e.target)));
     this.treeObserver.disconnect();
-    for (const tree of this.screens.loadout.querySelectorAll('.lo-tree')) this.treeObserver.observe(tree);
+    for (const tree of screen.querySelectorAll('.lo-tree')) this.treeObserver.observe(tree);
     // a click redraws the screen: keep showing what the pointer is on
     this.describe(this.loadoutHover);
   }
 
   /**
-   * The plaque that follows the pointer: `hover` is { kind, type: 'talent' | 'pick' | 'about', key,
-   * option, id }, or null to hide it.
+   * The plaque that follows the pointer: `hover` is { type: 'talent' | 'gear' | 'gearItem',
+   * kind, key, option, id, slot, area }, or null to hide it.
    */
   describe(hover) {
     const tip = this.loadoutTip;
+    const view = this.loadout;
     if (!tip) return;
-    const col = hover && this.loadout?.columns.find((c) => c.kind === hover.kind);
-    const anchor = col && this.screens.loadout.querySelector(anchorSelector(hover));
+    const anchor = hover && view && this.screens.loadout.querySelector(anchorSelector(hover));
     let parts = null;
-    if (anchor && hover.type === 'talent') parts = talentInfo(col.tree, hover);
-    else if (anchor && hover.type === 'pick') {
-      const pick = col.picks.find((p) => p.id === hover.id);
-      if (pick) parts = pick.about ? aboutParts(pick.about, true) : [el('span', 'hero-blurb', 'Locked.')];
-    } else if (anchor && hover.type === 'gear') {
-      const s = col.gear?.slots.find((x) => x.slot === hover.slot);
-      if (s?.item) parts = gearParts(s.item, s.open ? 'Click to close the list.' : 'Click to change it.');
-      else if (s) parts = [el('b', 'lo-tip-name', s.label), el('span', 'hero-blurb', s.owned ? `Nothing on. ${s.owned} found: click to choose.` : 'Nothing found yet. Clear a depth: its final boss leaves a chest of gear.')];
-    } else if (anchor && hover.type === 'gearItem') {
-      const it = col.gear?.open?.items.find((x) => x.id === hover.id);
-      if (it) parts = gearParts(it, it.worn ? 'Click to take it off.' : 'Click to wear it.');
-    } else if (anchor && hover.type === 'about') parts = aboutParts(col.about, false);
+    if (anchor) {
+      const col = view.columns.find((c) => c.kind === hover.kind);
+      if (hover.type === 'talent' && col) parts = talentInfo(col.tree, hover);
+      else if (hover.type === 'gear') {
+        const s = view.gear.slots.find((x) => x.slot === hover.slot);
+        if (s?.item) parts = gearParts(s.item, hover.area === 'main' ? 'Click to change it.' : null);
+        else if (s) parts = [el('b', 'lo-tip-name', s.label), el('span', 'hero-blurb', s.owned ? `Nothing on. ${s.owned} found: click to choose.` : 'Nothing found yet. Beat a depth’s final boss: it leaves a chest of equipment.')];
+      } else if (hover.type === 'gearItem') {
+        const it = view.gear.open?.items.find((x) => x.id === hover.id);
+        if (it) parts = gearParts(it, it.worn ? 'Click to take it off.' : 'Click to wear it.');
+      }
+    }
     if (!parts) {
       tip.hidden = true;
       return;
@@ -107,7 +113,11 @@ export class Menus {
     placeTip(tip, anchor.getBoundingClientRect());
   }
 
-  /** Clicks are handled like every other button (data-action); this adds the plaque and right-click refunds. */
+  /**
+   * Clicks are handled like every other button (data-action); this adds the plaque, right-click
+   * refunds, scrolling through divers and weapons with the mouse wheel, and closing a window by
+   * clicking outside it.
+   */
   setupLoadout() {
     this.loadoutHover = null;
     const screen = this.screens.loadout;
@@ -116,21 +126,15 @@ export class Menus {
     this.loadoutTip.hidden = true;
     screen.append(this.loadoutTip);
     screen.addEventListener('pointerover', (e) => {
-      const column = e.target.closest('[data-col]');
-      const kind = column?.dataset.col;
+      const kind = e.target.closest('[data-col]')?.dataset.col;
       const node = e.target.closest('[data-key]');
-      const pick = e.target.closest('[data-pick]');
-      const about = e.target.closest('[data-about]');
       const gearItem = e.target.closest('[data-gear-item]');
       const gearSlot = e.target.closest('[data-gear-slot]');
       let hover = null;
       if (kind && node) hover = { kind, type: 'talent', key: node.dataset.key, option: node.dataset.option };
-      else if (kind && pick) hover = { kind, type: 'pick', id: pick.dataset.pick };
-      else if (kind && gearItem) hover = { kind, type: 'gearItem', id: gearItem.dataset.gearItem };
-      else if (kind && gearSlot) hover = { kind, type: 'gear', slot: gearSlot.dataset.gearSlot };
-      else if (kind && about) hover = { kind, type: 'about' };
-      const was = this.loadoutHover;
-      if (was?.kind === hover?.kind && was?.type === hover?.type && was?.key === hover?.key && was?.option === hover?.option && was?.id === hover?.id && was?.slot === hover?.slot) return;
+      else if (gearItem) hover = { type: 'gearItem', id: gearItem.dataset.gearItem };
+      else if (gearSlot) hover = { type: 'gear', slot: gearSlot.dataset.gearSlot, area: gearSlot.closest('[data-area]')?.dataset.area };
+      if (JSON.stringify(hover) === JSON.stringify(this.loadoutHover)) return;
       this.loadoutHover = hover;
       this.describe(hover);
     });
@@ -144,6 +148,23 @@ export class Menus {
       e.preventDefault();
       this.actions.talentRefund?.(node.dataset.value.split('#')[0]);
     });
+    screen.addEventListener('click', (e) => {
+      if (e.target.matches('.lo-window')) this.actions.window?.(''); // the dark backdrop round a window
+    });
+    // the wheel over the diver or the weapon goes to the next or previous one (one step per flick)
+    let wheelAt = 0;
+    screen.addEventListener(
+      'wheel',
+      (e) => {
+        const box = e.target.closest('.lo-picker');
+        if (!box || e.deltaY === 0) return;
+        e.preventDefault();
+        if (performance.now() - wheelAt < 180) return;
+        wheelAt = performance.now();
+        box.querySelector(e.deltaY > 0 ? '.lo-next' : '.lo-prev')?.click();
+      },
+      { passive: false },
+    );
   }
 
   showDepths(entries, hero, weapon) {
@@ -506,28 +527,95 @@ const COL_W = 96; // a tree is 5 columns...
 const ROW_H = 92; // ...and up to 6 rows
 const NODE = 54;
 
-/** One column of the loadout: the portholes to swap it, then its plate (name, level, tree, plaque). */
-function renderLoadoutColumn(box, col, debug) {
-  const picks = el('div', 'lo-picks');
-  for (const p of col.picks) {
-    const b = el('button', `lo-pick${p.active ? ' active' : ''}${p.locked ? ' locked' : ''}`);
-    b.type = 'button';
-    b.dataset.action = 'equip';
-    b.dataset.value = `${col.kind}:${p.id}`;
-    b.dataset.pick = p.id;
-    b.disabled = p.locked;
-    b.title = p.name;
-    b.style.setProperty('--accent', p.accent);
-    b.append(col.kind === 'character' ? porthole(portrait(p.hero, { silhouette: p.locked }), 'lo-port') : itemIcon('card-icon lo-port', { kind: 'weapon', id: p.id }, p.icon));
-    if (p.free > 0) b.append(el('span', 'tab-points', String(p.free))); // points waiting in its tree
-    picks.append(b);
-  }
+/** The loadout's plate: the diver and the weapon (each opens the Talents window), the equipment slots, and the Equipment button. */
+function renderLoadoutMain(box, view) {
+  const pickers = el('div', 'lo-pickers');
+  for (const col of view.columns) pickers.append(picker(col));
+  const equipment = el('div', 'lo-equipment');
+  equipment.dataset.area = 'main';
+  equipment.append(el('span', 'tag-plaque gear-label', 'Equipment'), gearSockets(view.gear.slots), gearSets(view.gear, false));
+  const buttons = el('div', 'lo-buttons');
+  const fresh = view.gear.slots.reduce((sum, s) => sum + s.unseen, 0);
+  buttons.append(button(`btn${fresh > 0 ? ' primary-soft' : ''}`, fresh > 0 ? `Equipment (${fresh} new)` : 'Equipment', 'window', 'equipment'));
+  box.replaceChildren(pickers, equipment, buttons);
+}
 
+/**
+ * The diver or the weapon: the chosen one between two arrows that step through the ones you have
+ * (locked ones are skipped; it wraps round), and what it is underneath. The chosen one is a button
+ * that opens the Talents window; its tag says when its tree has points waiting, and a dot on the
+ * arrows says another diver's or weapon's does.
+ */
+function picker(col) {
+  const box = el('div', 'lo-picker');
+  box.dataset.picker = col.kind;
+  const open = col.picks.filter((p) => !p.locked);
+  const at = Math.max(0, open.findIndex((p) => p.active));
+  const current = open[at] ?? col.picks[0];
+  // points waiting in the trees of the ones you haven't picked: a dot on the arrows
+  const elsewhere = open.reduce((sum, p) => sum + (p.active ? 0 : p.free), 0);
+  const step = (dir, className, label) => {
+    const next = open[(at + dir + open.length) % open.length];
+    const b = button(`lo-arrow ${className}`, dir < 0 ? '‹' : '›', 'equip', `${col.kind}:${next.id}`);
+    b.setAttribute('aria-label', `${label} ${col.label.toLowerCase()}: ${next.name}`);
+    b.disabled = open.length < 2;
+    if (elsewhere > 0) b.append(el('span', 'lo-arrow-dot'));
+    return b;
+  };
+  const card = button('lo-select', '', 'window', 'talents');
+  card.setAttribute('aria-label', `${col.about.name}: open the talents`);
+  const text = el('span', 'lo-select-text');
+  text.append(el('span', 'lo-select-label', `${col.label} · ${at + 1} of ${open.length}`), el('b', 'lo-select-name', col.about.name), el('span', 'lo-select-role', col.about.role));
+  const own = current.free;
+  text.append(el('span', `lo-talents${own > 0 ? ' has-points' : ''}`, own > 0 ? `+${own} Talent${own > 1 ? 's' : ''}` : 'Talents'));
+  card.append(pickPicture(col.kind, current, 'lo-select-port'), text);
+  const row = el('div', 'lo-cycle');
+  row.append(step(-1, 'lo-prev', 'Previous'), card, step(1, 'lo-next', 'Next'));
+  const about = el('div', 'plaque lo-about');
+  about.append(...aboutParts(col.about, false));
+  box.append(row, about);
+  return box;
+}
+
+/** A diver's portrait or a weapon's picture, in a porthole. */
+function pickPicture(kind, p, className) {
+  return kind === 'character' ? porthole(portrait(p.hero, { silhouette: p.locked }), className) : itemIcon(`card-icon ${className}`, { kind: 'weapon', id: p.id }, p.icon);
+}
+
+/** A window over the loadout: its title, a Close button, and a body to fill. */
+function windowPlate(title, className) {
+  const node = el('div', `panel lo-window-plate ${className}`);
+  node.setAttribute('role', 'dialog');
+  node.setAttribute('aria-label', title);
+  const head = el('div', 'lo-window-head');
+  const close = button('btn small', 'Close ', 'window', '');
+  close.append(el('kbd', null, 'Esc'));
+  head.append(el('h2', null, title), close);
+  const body = el('div', 'lo-window-body');
+  node.append(head, body);
+  return { node, body };
+}
+
+/** The Talents window: the diver's tree and the weapon's, side by side. */
+function renderTalentsWindow(win, view) {
+  const { node, body } = windowPlate('Talents', 'talents-window');
+  const cols = el('div', 'lo-cols');
+  for (const col of view.columns) {
+    const c = el('div', 'lo-col');
+    c.dataset.col = col.kind;
+    c.append(treeHead(col, view.debug), el('div', 'talent-tree lo-tree'));
+    cols.append(c);
+  }
+  body.append(cols);
+  win.replaceChildren(node);
+  for (const col of view.columns) renderTree(win.querySelector(`[data-col="${col.kind}"] .lo-tree`), col.tree);
+}
+
+/** Above a tree: whose it is, its level and points, and Reset. */
+function treeHead(col, debug) {
   const { tree: treeId, head: h } = col.tree;
   const names = el('div', 'lo-names');
-  names.dataset.about = ''; // pointing at the name says what it is
   names.append(el('span', 'hero-name', col.about.name), el('span', 'hero-role', col.about.role));
-  // level, XP and points on a small dark plaque
   const stats = el('div', 'lo-stats');
   const level = el('div', 'lo-level');
   const maxed = h.level >= h.maxLevel;
@@ -546,58 +634,75 @@ function renderLoadoutColumn(box, col, debug) {
   if (debug) tools.append(button('btn small', '+1 level', 'talentLevel', treeId));
   const head = el('div', 'lo-head');
   head.append(names, stats, tools);
-
-  const plate = el('div', `lo-plate${col.gear ? ' has-gear' : ''}`);
-  plate.append(head);
-  if (col.gear) {
-    plate.append(gearRow(col.gear));
-    // a gear slot is open: what you've found for it, where the tree was
-    if (col.gear.open) {
-      plate.append(gearStash(col.gear.open, debug));
-      box.replaceChildren(picks, plate);
-      return;
-    }
-  }
-  const tree = el('div', 'talent-tree lo-tree');
-  plate.append(tree);
-  box.replaceChildren(picks, plate);
-  renderTree(tree, col.tree);
+  return head;
 }
 
-/** The diver's five gear sockets, and the sets they're wearing pieces of. */
-function gearRow(gear) {
-  const row = el('div', 'lo-gear');
-  const sockets = el('div', 'gear-sockets');
-  for (const s of gear.slots) {
-    const b = el('button', `gear-socket${s.item ? '' : ' empty'}${s.open ? ' open' : ''}`);
+/** The Equipment window: the five slots (with the sets worn) on one side, what's found for the open slot on the other. */
+function renderEquipmentWindow(win, view) {
+  const { node, body } = windowPlate('Equipment', 'equipment-window');
+  const side = el('div', 'eq-side');
+  side.dataset.area = 'window';
+  const slots = el('div', 'eq-slots');
+  for (const s of view.gear.slots) {
+    const b = el('button', `eq-slot${s.open ? ' open' : ''}`);
+    b.type = 'button';
+    b.dataset.action = 'gearSlot';
+    b.dataset.value = s.slot;
+    b.dataset.gearSlot = s.slot;
+    if (s.item) b.style.setProperty('--accent', s.item.color);
+    const text = el('span', 'eq-slot-text');
+    text.append(el('b', null, s.label), el('span', null, s.item ? s.item.name : 'Nothing on'));
+    b.append(socket(s, 'span'), text);
+    slots.append(b);
+  }
+  side.append(slots, gearSets(view.gear, true));
+  body.append(side, gearStash(view.gear.open, view.debug));
+  win.replaceChildren(node);
+}
+
+/** A slot's socket: the piece in it (ringed in its rarity's color), or the slot's outline; a dot counts new pieces. */
+function socket(s, tag = 'button') {
+  const node = el(tag, `gear-socket${s.item ? '' : ' empty'}`);
+  if (s.item) node.style.setProperty('--accent', s.item.color);
+  node.append(image('gear-socket-icon', itemIconURL('gear', s.item ? s.item.id : `empty-${s.slot}`)));
+  if (s.unseen > 0) node.append(el('span', 'gear-new-dot', String(s.unseen)));
+  return node;
+}
+
+/** The five sockets on the loadout: click one to open the Equipment window on it. */
+function gearSockets(slots) {
+  const row = el('div', 'gear-sockets');
+  for (const s of slots) {
+    const b = socket(s);
     b.type = 'button';
     b.dataset.action = 'gearSlot';
     b.dataset.value = s.slot;
     b.dataset.gearSlot = s.slot;
     b.setAttribute('aria-label', `${s.label}: ${s.item ? s.item.name : 'nothing on'}`);
-    if (s.item) b.style.setProperty('--accent', s.item.color);
-    b.append(image('gear-socket-icon', itemIconURL('gear', s.item ? s.item.id : `empty-${s.slot}`)));
-    if (s.unseen > 0) b.append(el('span', 'gear-new-dot', String(s.unseen))); // found, not looked at yet
-    sockets.append(b);
+    row.append(b);
   }
+  return row;
+}
+
+/** The sets being worn (lit once 2 pieces are on), or a hint when there are none. */
+function gearSets(gear, inWindow) {
   const sets = el('div', 'gear-sets');
   for (const set of gear.sets) sets.append(el('span', `tag-plaque gear-set${set.active ? ' active' : ''}`, `${set.name} ${set.count}/3`));
   if (!gear.sets.length) {
     const found = gear.slots.some((s) => s.owned > 0);
-    sets.append(el('span', 'gear-hint', found ? 'Gear: click a slot to put something on.' : 'Gear: clear a depth to find some.'));
+    let hint = found ? 'Click a slot to put equipment on.' : 'Beat a depth’s final boss to find equipment.';
+    if (inWindow) hint = found ? 'Wear 2 pieces of a set to turn its bonus on.' : 'Nothing found yet. Beat a depth’s final boss: it leaves a chest of equipment.';
+    sets.append(el('span', 'gear-hint', hint));
   }
-  row.append(sockets, sets);
-  return row;
+  return sets;
 }
 
-/** Everything found for the open gear slot: click one to wear it, again to take it off. */
+/** Everything found for the open slot: click one to wear it, again to take it off. */
 function gearStash(open, debug) {
   const box = el('div', 'gear-stash');
   const head = el('div', 'gear-stash-head');
-  const tools = el('div', 'lo-tools');
-  if (debug) tools.append(button('btn small', 'Find gear', 'gearDebugLoot', ''));
-  tools.append(button('btn small', 'Talents', 'gearSlot', ''));
-  head.append(el('span', 'tag-plaque', `${open.label} · ${open.items.length} found`), tools);
+  head.append(el('span', 'tag-plaque', `${open.label} · ${open.items.length} found`));
+  if (debug) head.append(button('btn small', 'Find equipment', 'gearDebugLoot', ''));
   const list = el('div', 'gear-list');
   for (const it of open.items) {
     const b = el('button', `gear-item${it.worn ? ' worn' : ''}${it.cursed ? ' cursed' : ''}`);
@@ -616,12 +721,12 @@ function gearStash(open, debug) {
     else if (it.isNew) b.append(el('span', 'gear-badge new', 'New'));
     list.append(b);
   }
-  if (!open.items.length) list.append(el('p', 'plaque gear-none', 'Nothing for this slot yet. Clear a depth: its final boss leaves a chest of gear.'));
+  if (!open.items.length) list.append(el('p', 'plaque gear-none', 'Nothing for this slot yet. Beat a depth’s final boss: it leaves a chest of equipment.'));
   box.append(head, list);
   return box;
 }
 
-/** A piece of gear on a plaque: what it gives, its copies, and its set. */
+/** A piece of equipment on a plaque: what it gives, its copies, and its set. */
 function gearParts(it, note) {
   const title = el('div', 'talent-info-title');
   title.style.setProperty('--accent', it.color);
@@ -646,12 +751,12 @@ function gearParts(it, note) {
   return parts;
 }
 
-/** "Gear found" on the cleared screen: each item, and whether it's new, a copy or spare XP. */
+/** "Equipment found" on the cleared screen: each piece, and whether it's new, a copy or spare XP. */
 function renderLoot(container, loot = []) {
   if (!container) return;
   container.hidden = loot.length === 0;
   container.replaceChildren(
-    el('span', 'tag-plaque loot-title', 'Gear found'),
+    el('span', 'tag-plaque loot-title', 'Equipment found'),
     ...loot.map((item) => {
       const chip = el('span', 'chip loot-chip');
       chip.style.setProperty('--accent', item.color);
@@ -663,14 +768,11 @@ function renderLoot(container, loot = []) {
   );
 }
 
-/** Where the loadout's plaque points: the hovered talent, porthole or name (see Menus.describe). */
+/** Where the loadout's plaque points: the hovered talent, slot or piece (see Menus.describe). */
 function anchorSelector(hover) {
-  const col = `[data-col="${hover.kind}"]`;
-  if (hover.type === 'talent') return `${col} [data-key="${hover.key}"][data-option="${hover.option}"]`;
-  if (hover.type === 'pick') return `${col} [data-pick="${hover.id}"]`;
-  if (hover.type === 'gear') return `${col} [data-gear-slot="${hover.slot}"]`;
-  if (hover.type === 'gearItem') return `${col} [data-gear-item="${hover.id}"]`;
-  return `${col} [data-about]`;
+  if (hover.type === 'talent') return `[data-col="${hover.kind}"] [data-key="${hover.key}"][data-option="${hover.option}"]`;
+  if (hover.type === 'gear') return `[data-area="${hover.area}"] [data-gear-slot="${hover.slot}"]`;
+  return `[data-gear-item="${hover.id}"]`;
 }
 
 /** Put the plaque beside `rect` (right of it if there's room, else left), inside the window. */

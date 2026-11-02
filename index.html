@@ -26,23 +26,22 @@
               <li>Mute <span><kbd>M</kbd></span></li>
             </ul>
           </div>
-          <button class="btn primary big" type="button" data-action="start">Begin the descent <kbd>Enter</kbd></button>
+          <button class="btn primary big title-begin" type="button" data-action="start">Begin</button>
         </div>
       </section>
 
       <!-- Between dives: pick diver and weapon, and spend talent points in both trees, on one screen. -->
       <section class="screen screen-clear" data-screen="loadout" hidden>
-        <div class="panel bare lo-panel">
+        <div class="panel lo-panel">
           <h2>Loadout</h2>
-          <div class="lo-cols">
-            <div class="lo-col" data-col="character"></div>
-            <div class="lo-col" data-col="weapon"></div>
-          </div>
-          <div class="actions lo-actions">
+          <div class="lo-main" data-lo-main></div>
+          <div class="actions">
             <button class="btn" type="button" data-action="back">Back</button>
             <button class="btn primary" type="button" data-action="chooseDepth">Choose depth <kbd>Enter</kbd></button>
           </div>
         </div>
+        <!-- the Talents or Equipment window, over the loadout -->
+        <div class="lo-window" data-lo-window hidden></div>
       </section>
 
       <section class="screen screen-clear" data-screen="depths" hidden>
