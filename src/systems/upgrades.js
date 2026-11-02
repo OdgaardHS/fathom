@@ -244,7 +244,10 @@ function weaponOption(id, level, weight, isNew = false) {
   };
 }
 
-/** An augment card for weapon `w`: the card names it, and shows the augment's rarity. */
+/**
+ * An augment card for weapon `w`: the weapon is the card's name and picture, the buff is the big
+ * text on its plaque, and the rarity colors it.
+ */
 function augmentOption(w, aug) {
   const rarity = RARITIES[aug.rarity];
   return {
@@ -253,14 +256,14 @@ function augmentOption(w, aug) {
     weapon: w.id,
     augment: aug,
     rarity: aug.rarity,
-    sprite: { kind: 'passive', id: aug.icon },
+    sprite: { kind: 'weapon', id: w.id },
     weight: aug.weight,
-    name: aug.name,
-    icon: aug.name.slice(0, 2),
+    name: w.def.name,
+    icon: w.def.icon,
     color: rarity.color,
     tag: `${rarity.name} augment`,
     text: aug.text,
-    on: { id: w.id, name: w.def.name, icon: w.def.icon, color: w.def.color },
+    buff: true, // the text is the whole point: show it big
   };
 }
 

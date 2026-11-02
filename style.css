@@ -959,6 +959,281 @@ kbd {
   overflow: hidden;
 }
 
+/* ---------- Gear (the diver's column of the loadout) ---------- */
+
+/* the diver's plate has a row of gear sockets between the name and the tree */
+.lo-plate.has-gear {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.lo-gear {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.gear-sockets {
+  display: flex;
+  gap: 6px;
+}
+
+/* a gear socket: a small porthole with the piece in it, ringed in its rarity's color */
+.gear-socket {
+  --accent: transparent;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--socket) center / 100% 100% no-repeat, radial-gradient(circle, #1e5866 0 34%, #03090b 58%, transparent 61%);
+  box-shadow: 0 0 0 2px var(--accent), 0 3px 4px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: transform 120ms, box-shadow 120ms;
+}
+
+.gear-socket:hover {
+  transform: translateY(-2px);
+}
+
+.gear-socket.open {
+  box-shadow: 0 0 0 3px var(--lamp), 0 0 14px rgba(255, 190, 80, 0.75);
+}
+
+.gear-socket-icon {
+  width: 30px;
+  height: 30px;
+  pointer-events: none;
+}
+
+.gear-socket.empty .gear-socket-icon {
+  opacity: 0.6;
+}
+
+/* how many new pieces wait in this slot */
+.gear-new-dot {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font: 700 0.72rem/1 var(--plate);
+  color: #3a2200;
+  background: radial-gradient(circle at 40% 35%, var(--lamp-hot), var(--lamp) 55%, #c27d22);
+  border-radius: 999px;
+  box-shadow: 0 0 8px rgba(255, 190, 80, 0.8), 0 0 0 2px var(--outline);
+}
+
+.gear-sets {
+  display: flex;
+  flex: 1 1 140px;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* a set with fewer than 2 pieces on does nothing yet */
+.gear-set {
+  font: 700 0.72rem var(--plate);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.gear-set.active {
+  color: var(--lamp-hot);
+  opacity: 1;
+  box-shadow: inset 0 0 0 1.5px var(--lamp), 0 0 0 1.5px var(--outline), 0 0 10px rgba(255, 190, 80, 0.45);
+}
+
+.gear-hint {
+  font: 600 0.82rem var(--plate);
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+/* an open slot: what you've found for it, in place of the tree */
+.gear-stash {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+}
+
+.gear-stash-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gear-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  padding: 4px;
+  overflow-y: auto;
+}
+
+/* one piece of gear, on a small dark plaque; its rarity's color down the left edge */
+.gear-item {
+  --accent: var(--bronze-rim);
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px 7px 8px;
+  font: inherit;
+  text-align: left;
+  color: var(--bronze-text);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
+  background-image: var(--plaque-surface), var(--plaque-face);
+  background-size: 160px 160px, auto;
+  background-blend-mode: soft-light, normal;
+  border: 0;
+  border-radius: 7px;
+  box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 1.5px var(--bronze-rim), 0 0 0 1.5px var(--outline), 0 2px 0 1.5px var(--outline);
+  cursor: pointer;
+  transition: transform 120ms, box-shadow 120ms;
+}
+
+.gear-item:hover {
+  transform: translateX(2px);
+}
+
+.gear-item.worn {
+  box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 1.5px var(--lamp), 0 0 0 1.5px var(--outline), 0 0 12px rgba(255, 190, 80, 0.5);
+}
+
+.gear-item-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  background: var(--deep-glass);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 3.5px var(--outline);
+}
+
+.gear-item-icon img {
+  width: 32px;
+  height: 32px;
+}
+
+.gear-item-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gear-item-name {
+  font: 700 1rem/1.1 var(--plate);
+  letter-spacing: 0.03em;
+  color: var(--accent);
+}
+
+.gear-item-tag {
+  font: 700 0.68rem var(--plate);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--bronze-dim);
+}
+
+.gear-item-stats {
+  font-size: 0.85rem;
+  line-height: 1.3;
+}
+
+.gear-badge {
+  padding: 3px 7px 2px;
+  font: 700 0.68rem/1 var(--plate);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: none;
+  border-radius: 999px;
+}
+
+.gear-badge.worn {
+  color: #3a2200;
+  background: var(--lamp);
+}
+
+.gear-badge.new {
+  color: #0e2a1a;
+  background: var(--verdigris);
+}
+
+.gear-none {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+/* the plaque: a cursed piece's warning, and its set's bonuses (the ones that are on, lit) */
+.gear-cursed {
+  margin: 0;
+  font: italic 600 0.85rem var(--body);
+  color: #d58cff;
+}
+
+.gear-stat {
+  margin: 0;
+}
+
+.gear-set-info {
+  display: grid;
+  gap: 5px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(196, 170, 124, 0.3);
+}
+
+.gear-set-info > b {
+  font: 700 0.8rem var(--plate);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.gear-set-bonus {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--bronze-dim);
+  opacity: 0.75;
+}
+
+.gear-set-bonus.active {
+  color: var(--bronze-text);
+  opacity: 1;
+}
+
+.gear-set-bonus em {
+  font: normal 700 0.78rem var(--plate);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.gear-set-bonus.active em {
+  color: var(--lamp);
+}
+
+.gear-set-pieces,
+.gear-set-suits {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--bronze-dim);
+}
+
+.gear-set-suits {
+  font-style: italic;
+}
+
 /* what the talent, porthole or name under the pointer does, on a plaque beside it */
 .lo-tip {
   position: fixed;
@@ -1046,14 +1321,21 @@ kbd {
     gap: 12px;
   }
 
-  .lo-tree {
+  .lo-tree,
+  .gear-stash {
     height: 400px;
   }
 }
 
 @media (max-width: 520px) {
-  .lo-tree {
+  .lo-tree,
+  .gear-stash {
     height: 360px;
+  }
+
+  .gear-socket {
+    width: 40px;
+    height: 40px;
   }
 }
 
@@ -1280,34 +1562,51 @@ kbd {
   color: var(--accent);
 }
 
+/*
+ * An augment card's frame is a glass pipe instead of a brass band: copper elbows at the corners,
+ * a copper clamp on each side, and fluid in the rarity's color running round it. ui/pipes.js
+ * draws it on a canvas over the band (.pipe); the band itself is left clear, so the water behind
+ * shows through the glass, and has no studs.
+ */
+.card[data-rarity] {
+  background-image:
+    radial-gradient(ellipse 90% 50% at 50% 110%, rgba(74, 22, 6, 0.5), rgba(74, 22, 6, 0) 72%),
+    var(--surface),
+    var(--copper-face);
+  background-position: 0 0, var(--tex-x, 0) var(--tex-y, 0), 0 0;
+  background-size: auto, 256px 256px, auto;
+  background-blend-mode: normal, overlay, normal;
+  background-origin: padding-box;
+  background-clip: padding-box;
+  box-shadow: inset 0 0 0 2px rgba(42, 20, 6, 0.75), inset 0 4px 0 rgba(255, 228, 205, 0.4), 0 18px 36px rgba(0, 0, 0, 0.55);
+}
+
+.card[data-rarity]::before {
+  display: none;
+}
+
+.card[data-rarity]:hover {
+  box-shadow: inset 0 0 0 2px rgba(42, 20, 6, 0.75), inset 0 4px 0 rgba(255, 228, 205, 0.4), 0 0 26px rgba(255, 214, 130, 0.55), 0 22px 40px rgba(0, 0, 0, 0.55);
+}
+
+/* the rarer ones glow in their color */
 .card[data-rarity='rare'],
 .card[data-rarity='exotic'] {
-  box-shadow:
-    inset 0 0 0 2px rgba(42, 20, 6, 0.75),
-    inset 0 4px 0 rgba(255, 228, 205, 0.4),
-    0 0 0 2.5px var(--outline),
-    0 0 0 5px color-mix(in srgb, var(--accent) 70%, transparent),
-    0 0 26px color-mix(in srgb, var(--accent) 55%, transparent),
-    0 18px 36px rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 0 0 2px rgba(42, 20, 6, 0.75), inset 0 4px 0 rgba(255, 228, 205, 0.4), 0 0 28px color-mix(in srgb, var(--accent) 55%, transparent), 0 18px 36px rgba(0, 0, 0, 0.55);
 }
 
-/* "On your [icon] Harpoon" */
-.card-on {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font: 700 0.74rem var(--plate);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--bronze-dim);
+.pipe {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
 }
 
-.card-on em {
-  font-style: normal;
-}
-
-.card-on b {
-  color: var(--bronze-text);
+/* an augment's buff: the big line on its plaque, in its rarity's color */
+.card-buff {
+  font: 700 1.55rem/1.15 var(--plate);
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.75);
 }
 
 /* Trinkets: glass gone green */
@@ -2026,6 +2325,27 @@ kbd {
 
 .build:empty {
   display: none;
+}
+
+/* the cleared screen's "Gear found": each piece ringed in its rarity's color */
+.loot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.loot-title {
+  font: 700 0.76rem var(--plate);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.loot-chip {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .chip {

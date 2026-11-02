@@ -32,7 +32,7 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
 | --- | --- |
 | WASD / arrow keys | Swim (weapons fire on their own) |
 | Number keys or click | Pick an upgrade or trinket |
-| Click | On the loadout: a porthole to swap diver or weapon, a talent to learn it |
+| Click | On the loadout: a porthole to swap diver or weapon, a talent to learn it, a gear slot to see what you've found for it, a piece of gear to wear it (again to take it off) |
 | Right-click | On the loadout: take a point back from a talent |
 | Drag | On the trinket screen, drag a trinket onto one of your weapons (or press its number, then the weapon's; Esc puts it back) |
 | R | Spit out both level-up cards and draw new ones (the Hollow Diver's *Spit It Out*) |
@@ -121,13 +121,19 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
   wedge sweeps around its slot like a spell cooldown. Weapon notes (drones out, Conductor Coil
   charge, the Watching Eye's heat) sit just above the bar; a boss's health bar shows at the top,
   under the timer.
-- **Weapon augments** make one weapon better, never all of them. Their level-up card names the
-  weapon ("Might · on your Harpoon: +5% damage"), and a weapon can take any number of them. They
+- **Weapon augments** make one weapon better, never all of them. Their level-up card is the
+  weapon's (its name and picture), with the buff in big letters on its plaque ("+5% damage"),
+  colored by rarity. Instead of a brass band, the card is framed by a glass pipe in copper fittings
+  with fluid of the rarity's color running round it (`src/ui/pipes.js`). A weapon can take any
+  number of them. They
   come in rarities: **common** (+5% to one stat), **uncommon** (+10%), **rare** (+8% to two stats,
   with a blue edge) and **exotic** (purple: *Plus One*, one more of whatever the weapon makes more
   of, like one more harpoon per volley or one more jump for the Eel Lance's arcs; Sonar Pulse, which
   has nothing to count, gets +12% to all its stats instead). An augment only boosts stats its weapon
   uses. They're defined in `src/data/augments.js`.
+- **Gear** (see [Gear](#gear)): helmet, suit, gloves, boots and air tank, found by clearing depths
+  and worn from the loadout. Common pieces give a little of one stat; rare and epic pieces belong to
+  sets whose bonuses change how a dive plays.
 - **6 passives** for the diver themselves: Vitality, Swiftness, Armor, Recovery, Attractor and
   Insight, up to 4 at once, offered on level-up cards next to weapons and augments. Pearls are XP.
 
@@ -321,16 +327,57 @@ Darts, Conductor Coil on Sonar Pulse next to weapons that hit a lot, the Anglerf
 crowd into Sonar Pulse or the Pistol Shrimp's blasts, Bubble Net's *Soft Target* or the Watching
 Eye's *Evil Eye* setting up a hard-hitting second weapon.
 
+## Gear
+
+The diver wears gear in five slots: **helmet, suit, gloves, boots and air tank**, one piece each.
+Put it on in the loadout: the diver's column has a row of five sockets under the name. Click one
+to see everything you've found for that slot (in place of the talent tree), click a piece to wear
+it, click it again to take it off, and point at anything to see what it does. Each diver has their
+own gear on; everything you find goes into one stash they all share.
+
+- **Finding it**: a depth's final boss leaves a chest of gear (it glows violet and drifts over to
+  you). Sunlit Shallows gives 2 pieces, The Open Blue 3. The first time you clear a depth, one of
+  them is always a set piece. The cleared screen lists what you found.
+- **Fixed numbers**: every piece always gives the same thing.
+- **Copies**: finding a piece again makes it 5% stronger (its stats; a set's bonuses stay the
+  same), up to +50% at 11 copies. Copies after that become XP for the diver who found them
+  (100 for a common, 200 uncommon, 400 rare, 800 epic).
+- **Rarities**, in the augments' colors: **common** (one stat), **uncommon** (two), **rare** and
+  **epic** (set pieces). Common and uncommon pieces drop anywhere; set pieces drop from their
+  depth. The Open Blue can't be reached until Kelp Twilight is built, so for now its sets drop in
+  Sunlit Shallows too (epics 3% of the time there).
+
+Common and uncommon pieces: Brass Bonnet (+10% pickup range), Scratched Faceplate (+5% pearl value),
+Twelve-Bolt Helmet (+1 armor, +8% pickup range), Patched Canvas Suit (+6% max health), Oilskin Suit
+(+0.2 health per second), Quilted Undersuit (+8% max health, +0.15 health per second), Riveted Gloves
+(+4% damage), Greased Gloves (+4% haste), Steelcap Gauntlets (+5% damage, +3% haste), Cork-Soled
+Boots (+5% move speed), Lead Boots (+1 armor), Fin Boots (+6% move speed, +6% pickup range), Spare
+Air Tank (+6% duration), Pressure Tank (+5% size), Twin Tanks (+5% duration, +4% size).
+
+**Sets** have three pieces. Two pieces turn the bonus on, the third makes it stronger. Every set
+works with any weapon, but each suits some more than others:
+
+| Set | From | 2 pieces | 3 pieces | Best with |
+| --- | --- | --- | --- | --- |
+| **Pearl Diver's Kit** (rare) | Sunlit Shallows | Every pearl you pick up adds 1% damage, up to 15%; it fades after 4 seconds without one | Up to 30%, lasting 8 seconds | Weapons that clear crowds fast, pickup range |
+| **Choir of the Drowned** (rare) | Sunlit Shallows | Every 15 seconds you sing: enemies near you stop for 2 seconds (elites 1; bosses don't stop) | Twice as far, and listening enemies take 20% more damage | Short-range and area weapons |
+| **Lamplighter's Rig** (rare) | The Open Blue | A lamp beam the way you swim: enemies in it take 15% more damage | Twice as long, 30% more damage | Weapons that fire forward: Harpoon, Needle Darts, Trident |
+| **Leviathan Hide** (epic) | The Open Blue | Every 10th hit is a bite for 25 extra damage | Every 6th hit, for 50 | Weapons that hit often: Needle Darts, Eel Lance, drones, Razor Starfish |
+| **The Omen's Regalia** (epic, cursed) | The Open Blue | Every 30 seconds a heartbeat takes 10% of every on-screen enemy's health (3% for bosses and elites) | Once per dive, a hit that would kill you leaves you at full health instead | Anything |
+
+The Omen's pieces are **cursed**: each one gives a lot and takes something (Omen's Crown: +12%
+damage, −8% max health; Omen's Shroud: +10% haste, −6% move speed; Omen's Lung: +10% size, −1 armor).
+
 ## Debug tools
 
 - **F3** (or add `?debug` to the URL) shows FPS, entity counts, spawn rate and seed, and enables cheats:
   **L** level up, **K** kill every enemy (killing the boss clears the depth), **T** skip 30 seconds,
   **C** open a trinket chest, **G** god mode. While debug mode is on, every built depth is open on
-  the depth map.
+  the depth map, and an open gear slot on the loadout has a "Find gear" button (one depth's loot).
 - **`?seed=1234`** in the URL replays the same dive: same spawns, drops and upgrade offers (as long
   as you make the same choices).
 - **`window.game`** in the browser console gives you the live game object, e.g. `game.player.hp = 999`.
-- To reset saved progress (depths, diver and weapon levels, talents), run
+- To reset saved progress (depths, diver and weapon levels, talents, gear), run
   `localStorage.removeItem('fathom:progress')` in the console
   (`fathom:hero` and `fathom:weapon` remember your last picks, `fathom:audio` your sound settings).
 
@@ -373,18 +420,22 @@ src/
     trinkets.js       trinkets: what each does on its weapon and with your other weapons
     passives.js       the diver's own stats (health, speed, armor, regen, pickup range, pearl value)
     augments.js       weapon augments: one weapon each, any number, common to exotic
+    gear.js           gear: every piece, the sets and their bonuses, what each depth drops
   entities/           player (stats, talent and trinket hooks), drone, enemy, enemy behaviours,
                       projectile, hazard, pickup, weapon (incl. its trinket slot)
   systems/            spawner, upgrade rolls, progression (levels, talent points, trees),
-                      particles/bubbles & damage numbers
+                      gear (the stash, copies, loot rolls, what's worn), particles/bubbles &
+                      damage numbers
   render/
     sprites.js        drawing code for every creature, the drones and the divers (with their gear)
-    icons.js          a small picture for every weapon, passive and trinket (HUD, cards, menus)
+    icons.js          a small picture for every weapon, passive, trinket and piece of gear
+                      (HUD, cards, menus)
     themes/           one file per depth's look (shallows.js, openblue.js): floor or
                       depth layers, light, overlay, omens
     omens.js          old-god effects any depth can use (the heartbeat)
     debug.js          debug overlay
-  ui/                 canvas HUD (hud.js), HTML menus (menus.js), and metal.js, which draws the
+  ui/                 canvas HUD (hud.js), HTML menus (menus.js), pipes.js (the glass pipe round
+                      augment cards), and metal.js, which draws the
                       hammered metal surfaces, porthole rings, studs, rusty corner screws and kelp
                       at startup (FINISH for the copper, BAND_FINISH for the brass bands and
                       PLAQUE_FINISH for the bronze plaques set shine, dent depth and size, patina
@@ -437,6 +488,11 @@ that decides which augments it can get, and `scaling.amount` is the text of its 
 `src/data/trees.js`, and optionally `apply(b, rank, player, flags)` plus
 `passiveText` for something built in while you carry it. It shows up on the weapon screen and on
 level-up cards automatically.
+
+**A piece of gear or a set:** add it to `GEAR` in `src/data/gear.js` with its slot, rarity, stats
+and a color for its picture; a set piece also names its `set` and the depth it drops `from`. A
+set's bonuses go in `GEAR_SETS` and work like a talent (flags and hooks). What each depth drops is
+`GEAR_LOOT`.
 
 **A passive:** add an entry to `src/data/passives.js` with `apply(b, level)` and `tags`. Passives
 are for the diver's own stats; anything that makes a weapon better is an augment

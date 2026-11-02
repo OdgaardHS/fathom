@@ -1,5 +1,6 @@
 import { CONFIG } from '../config.js';
 import { itemIconURL } from '../render/icons.js';
+import { attachPipe } from './pipes.js';
 import { drawDiver } from '../render/sprites.js';
 import { formatTime } from './format.js';
 
@@ -89,6 +90,13 @@ export class Menus {
     else if (anchor && hover.type === 'pick') {
       const pick = col.picks.find((p) => p.id === hover.id);
       if (pick) parts = pick.about ? aboutParts(pick.about, true) : [el('span', 'hero-blurb', 'Locked.')];
+    } else if (anchor && hover.type === 'gear') {
+      const s = col.gear?.slots.find((x) => x.slot === hover.slot);
+      if (s?.item) parts = gearParts(s.item, s.open ? 'Click to close the list.' : 'Click to change it.');
+      else if (s) parts = [el('b', 'lo-tip-name', s.label), el('span', 'hero-blurb', s.owned ? `Nothing on. ${s.owned} found: click to choose.` : 'Nothing found yet. Clear a depth: its final boss leaves a chest of gear.')];
+    } else if (anchor && hover.type === 'gearItem') {
+      const it = col.gear?.open?.items.find((x) => x.id === hover.id);
+      if (it) parts = gearParts(it, it.worn ? 'Click to take it off.' : 'Click to wear it.');
     } else if (anchor && hover.type === 'about') parts = aboutParts(col.about, false);
     if (!parts) {
       tip.hidden = true;
@@ -113,12 +121,16 @@ export class Menus {
       const node = e.target.closest('[data-key]');
       const pick = e.target.closest('[data-pick]');
       const about = e.target.closest('[data-about]');
+      const gearItem = e.target.closest('[data-gear-item]');
+      const gearSlot = e.target.closest('[data-gear-slot]');
       let hover = null;
       if (kind && node) hover = { kind, type: 'talent', key: node.dataset.key, option: node.dataset.option };
       else if (kind && pick) hover = { kind, type: 'pick', id: pick.dataset.pick };
+      else if (kind && gearItem) hover = { kind, type: 'gearItem', id: gearItem.dataset.gearItem };
+      else if (kind && gearSlot) hover = { kind, type: 'gear', slot: gearSlot.dataset.gearSlot };
       else if (kind && about) hover = { kind, type: 'about' };
       const was = this.loadoutHover;
-      if (was?.kind === hover?.kind && was?.type === hover?.type && was?.key === hover?.key && was?.option === hover?.option && was?.id === hover?.id) return;
+      if (was?.kind === hover?.kind && was?.type === hover?.type && was?.key === hover?.key && was?.option === hover?.option && was?.id === hover?.id && was?.slot === hover?.slot) return;
       this.loadoutHover = hover;
       this.describe(hover);
     });
@@ -202,7 +214,11 @@ export class Menus {
       card.dataset.action = 'pick';
       card.dataset.value = String(i);
       card.style.setProperty('--accent', choice.color);
-      if (choice.rarity) card.dataset.rarity = choice.rarity; // augments: their rarity shows
+      // augments: their rarity shows, and a glass pipe of fluid in its color is their frame
+      if (choice.rarity) {
+        card.dataset.rarity = choice.rarity;
+        attachPipe(card, choice.color);
+      }
       // Once a trinket is picked, the number keys choose a weapon instead, so the cards hide theirs.
       if (!(trinkets && selected !== null)) card.append(el('kbd', 'card-key', String(i + 1)));
       if (trinkets) {
@@ -219,8 +235,7 @@ export class Menus {
       // what it is and what it does, on a dark bronze plaque
       const plaque = el('span', 'plaque card-plaque');
       plaque.append(el('span', 'card-tag', choice.tag));
-      if (choice.on) plaque.append(onWeapon(choice.on)); // an augment names its weapon
-      if (choice.text) plaque.append(el('span', 'card-text', choice.text));
+      if (choice.text) plaque.append(el('span', choice.buff ? 'card-buff' : 'card-text', choice.text));
       for (const [label, text] of choice.details ?? []) {
         const line = el('span', 'card-detail');
         line.append(el('b', null, label), el('span', null, text));
@@ -478,6 +493,7 @@ export class Menus {
     ]);
     renderBuild(screen.querySelector('[data-build]'), summary);
     renderProgress(screen.querySelector('[data-progress]'), summary.progress);
+    renderLoot(screen.querySelector('[data-loot]'), summary.loot);
     setTalentsButton(screen, summary.unspent);
     this.show('cleared');
   }
@@ -531,11 +547,120 @@ function renderLoadoutColumn(box, col, debug) {
   const head = el('div', 'lo-head');
   head.append(names, stats, tools);
 
+  const plate = el('div', `lo-plate${col.gear ? ' has-gear' : ''}`);
+  plate.append(head);
+  if (col.gear) {
+    plate.append(gearRow(col.gear));
+    // a gear slot is open: what you've found for it, where the tree was
+    if (col.gear.open) {
+      plate.append(gearStash(col.gear.open, debug));
+      box.replaceChildren(picks, plate);
+      return;
+    }
+  }
   const tree = el('div', 'talent-tree lo-tree');
-  const plate = el('div', 'lo-plate');
-  plate.append(head, tree);
+  plate.append(tree);
   box.replaceChildren(picks, plate);
   renderTree(tree, col.tree);
+}
+
+/** The diver's five gear sockets, and the sets they're wearing pieces of. */
+function gearRow(gear) {
+  const row = el('div', 'lo-gear');
+  const sockets = el('div', 'gear-sockets');
+  for (const s of gear.slots) {
+    const b = el('button', `gear-socket${s.item ? '' : ' empty'}${s.open ? ' open' : ''}`);
+    b.type = 'button';
+    b.dataset.action = 'gearSlot';
+    b.dataset.value = s.slot;
+    b.dataset.gearSlot = s.slot;
+    b.setAttribute('aria-label', `${s.label}: ${s.item ? s.item.name : 'nothing on'}`);
+    if (s.item) b.style.setProperty('--accent', s.item.color);
+    b.append(image('gear-socket-icon', itemIconURL('gear', s.item ? s.item.id : `empty-${s.slot}`)));
+    if (s.unseen > 0) b.append(el('span', 'gear-new-dot', String(s.unseen))); // found, not looked at yet
+    sockets.append(b);
+  }
+  const sets = el('div', 'gear-sets');
+  for (const set of gear.sets) sets.append(el('span', `tag-plaque gear-set${set.active ? ' active' : ''}`, `${set.name} ${set.count}/3`));
+  if (!gear.sets.length) {
+    const found = gear.slots.some((s) => s.owned > 0);
+    sets.append(el('span', 'gear-hint', found ? 'Gear: click a slot to put something on.' : 'Gear: clear a depth to find some.'));
+  }
+  row.append(sockets, sets);
+  return row;
+}
+
+/** Everything found for the open gear slot: click one to wear it, again to take it off. */
+function gearStash(open, debug) {
+  const box = el('div', 'gear-stash');
+  const head = el('div', 'gear-stash-head');
+  const tools = el('div', 'lo-tools');
+  if (debug) tools.append(button('btn small', 'Find gear', 'gearDebugLoot', ''));
+  tools.append(button('btn small', 'Talents', 'gearSlot', ''));
+  head.append(el('span', 'tag-plaque', `${open.label} · ${open.items.length} found`), tools);
+  const list = el('div', 'gear-list');
+  for (const it of open.items) {
+    const b = el('button', `gear-item${it.worn ? ' worn' : ''}${it.cursed ? ' cursed' : ''}`);
+    b.type = 'button';
+    b.dataset.action = 'gearToggle';
+    b.dataset.value = it.id;
+    b.dataset.gearItem = it.id;
+    b.style.setProperty('--accent', it.color);
+    const icon = el('span', 'gear-item-icon');
+    icon.append(image(null, itemIconURL('gear', it.id)));
+    const text = el('span', 'gear-item-text');
+    const tag = [it.rarityName, it.set?.name, it.copies > 1 ? `×${it.copies}, +${it.bonus}%` : null].filter(Boolean).join(' · ');
+    text.append(el('b', 'gear-item-name', it.name), el('span', 'gear-item-tag', tag), el('span', 'gear-item-stats', it.stats.join(', ')));
+    b.append(icon, text);
+    if (it.worn) b.append(el('span', 'gear-badge worn', 'Worn'));
+    else if (it.isNew) b.append(el('span', 'gear-badge new', 'New'));
+    list.append(b);
+  }
+  if (!open.items.length) list.append(el('p', 'plaque gear-none', 'Nothing for this slot yet. Clear a depth: its final boss leaves a chest of gear.'));
+  box.append(head, list);
+  return box;
+}
+
+/** A piece of gear on a plaque: what it gives, its copies, and its set. */
+function gearParts(it, note) {
+  const title = el('div', 'talent-info-title');
+  title.style.setProperty('--accent', it.color);
+  title.append(el('b', null, it.name), el('span', 'talent-info-rank', `${it.rarityName} ${it.slotName}`));
+  const parts = [title];
+  if (it.cursed) parts.push(el('p', 'gear-cursed', 'Cursed: it gives, and it takes.'));
+  for (const line of it.stats) parts.push(el('p', 'talent-info-text gear-stat', line));
+  if (it.copies > 1) parts.push(el('p', 'talent-info-next', `Found ${it.copies} times: +${it.bonus}% stronger${it.maxed ? ' (the most it gets; more copies turn into XP)' : ''}.`));
+  if (it.set) {
+    const set = el('div', 'gear-set-info');
+    set.append(el('b', null, `${it.set.name} · ${it.set.worn}/3 worn`));
+    for (const bonus of it.set.bonuses) {
+      const line = el('p', `gear-set-bonus${bonus.active ? ' active' : ''}`);
+      line.append(el('em', null, `${bonus.pieces} pieces:`), document.createTextNode(` ${bonus.text}`));
+      set.append(line);
+    }
+    set.append(el('p', 'gear-set-pieces', it.set.pieces.map((p) => `${p.worn ? '●' : '○'} ${p.name}`).join('   ')));
+    set.append(el('p', 'gear-set-suits', it.set.suits));
+    parts.push(set);
+  }
+  if (note) parts.push(el('p', 'talent-info-note', note));
+  return parts;
+}
+
+/** "Gear found" on the cleared screen: each item, and whether it's new, a copy or spare XP. */
+function renderLoot(container, loot = []) {
+  if (!container) return;
+  container.hidden = loot.length === 0;
+  container.replaceChildren(
+    el('span', 'tag-plaque loot-title', 'Gear found'),
+    ...loot.map((item) => {
+      const chip = el('span', 'chip loot-chip');
+      chip.style.setProperty('--accent', item.color);
+      const url = itemIconURL(item.sprite.kind, item.sprite.id);
+      if (url) chip.append(image('chip-icon', url));
+      chip.append(el('b', null, item.name), el('span', null, item.note));
+      return chip;
+    }),
+  );
 }
 
 /** Where the loadout's plaque points: the hovered talent, porthole or name (see Menus.describe). */
@@ -543,6 +668,8 @@ function anchorSelector(hover) {
   const col = `[data-col="${hover.kind}"]`;
   if (hover.type === 'talent') return `${col} [data-key="${hover.key}"][data-option="${hover.option}"]`;
   if (hover.type === 'pick') return `${col} [data-pick="${hover.id}"]`;
+  if (hover.type === 'gear') return `${col} [data-gear-slot="${hover.slot}"]`;
+  if (hover.type === 'gearItem') return `${col} [data-gear-item="${hover.id}"]`;
   return `${col} [data-about]`;
 }
 
@@ -781,15 +908,6 @@ function portrait(hero, { size = 64, silhouette = false } = {}) {
     ctx.globalCompositeOperation = 'source-over';
   }
   return canvas;
-}
-
-/** "On your [icon] Harpoon": the weapon an augment card is for. */
-function onWeapon(w) {
-  const row = el('span', 'card-on');
-  const chip = itemIcon('affect-chip', { kind: 'weapon', id: w.id }, w.icon);
-  chip.style.setProperty('--accent', w.color);
-  row.append(el('em', null, 'On your'), chip, el('b', null, w.name));
-  return row;
 }
 
 /** The weapons a stat bonus affects, as small icons. Hovering one says what it does for that weapon. */

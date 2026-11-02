@@ -5,6 +5,7 @@ import { TAU, createRng, randomSeed } from './core/math.js';
 import { SpatialGrid } from './core/spatialGrid.js';
 import { loadHeroChoice, loadProgress, loadWeaponChoice, saveHeroChoice, saveProgress, saveWeaponChoice } from './core/storage.js';
 import { ENEMY_TYPES, MAX_ENEMY_RADIUS } from './data/enemies.js';
+import { GEAR_RARITIES, inLampBeam } from './data/gear.js';
 import { HEROES, HERO_ORDER } from './data/heroes.js';
 import { LEVELS, bossTime, isPlayable } from './data/levels.js';
 import { PASSIVES } from './data/passives.js';
@@ -22,6 +23,7 @@ import { drawDebug } from './render/debug.js';
 import { drawHeartbeat } from './render/omens.js';
 import { getTheme } from './render/themes/index.js';
 import { Effects } from './systems/effects.js';
+import { addLoot, equippedGear, gearView, markSeen, rollLoot, toggleGear } from './systems/gear.js';
 import { Spawner } from './systems/spawner.js';
 import {
   bankDive,
@@ -78,7 +80,7 @@ const NUMBER_KEYS = [
 /**
  * Owns a dive: entities, systems, the state machine and draw order.
  *
- *   title ─▶ heroes ─▶ weapons ─▶ depths ─dive─▶ playing ◀──▶ paused
+ *   title ─▶ loadout ─▶ depths ─dive─▶ playing ◀──▶ paused
  *                                   ▲              │  ▲
  *                                   │      level up▼  │pick
  *                                   │            levelup   (every 5th level: talents;
@@ -137,7 +139,12 @@ export class Game {
         const [kind, id] = String(value).split(':');
         this.loadoutAction(() => (kind === 'character' ? this.chooseHero(id) : this.chooseWeapon(id)), 'select');
       },
-      chooseDepth: () => this.state === 'loadout' && this.setState('depths'),
+      chooseDepth: () => {
+        if (this.state !== 'loadout') return;
+        this.openGearSlot(null); // whatever was new in the open slot has been seen
+        saveProgress(this.progress);
+        this.setState('depths');
+      },
       dive: (id) => this.state === 'depths' && this.startRun(id),
       restart: () => this.state === 'gameover' && this.startRun(this.level.id),
       depths: () => this.toDepths(),
@@ -168,6 +175,10 @@ export class Game {
         const { kind, id } = talentTarget(tree);
         this.loadoutAction(() => this.debugLevelUp(kind, id));
       },
+      // The diver's gear: open a slot's stash (again to close it), wear or take off an item.
+      gearSlot: (slot) => this.loadoutAction(() => this.openGearSlot(slot || null), 'select'),
+      gearToggle: (id) => this.loadoutAction(() => toggleGear(this.progress, this.heroId, String(id)), 'trinket'),
+      gearDebugLoot: () => this.loadoutAction(() => this.debug && addLoot(this.progress, this.heroId, rollLoot('openblue', { next: Math.random }, true)).length > 0, 'chest'),
       toggleMusic: () => this.toggleAudio('music'),
       toggleSfx: () => this.toggleAudio('sfx'),
     });
@@ -205,6 +216,7 @@ export class Game {
     this.unlockedHero = null; // a secret diver this dive unlocked (shown on the cleared screen)
     this.banked = false; // this dive's XP has gone into the character's and weapons' levels
     this.diveResults = null; // what levelled up when it did (game-over / cleared screens)
+    this.loot = null; // the gear clearing this depth found (systems/gear.js addLoot)
     this.deathTimer = 0;
     this.clearing = 0;
     this.clearedAt = null;
@@ -275,7 +287,7 @@ export class Game {
     this.resetWorld();
     resetEnemyIds(); // so the same seed replays the same dive
     // Every talent taken in this character's tree, and in the weapons' trees, comes along.
-    this.player = new Player(0, 0, this.heroId, loadoutFor(this.progress, this.heroId));
+    this.player = new Player(0, 0, this.heroId, { ...loadoutFor(this.progress, this.heroId), gear: equippedGear(this.progress, this.heroId) });
     this.player.addWeapon(this.weaponId);
     this.player.recalcStats(); // the starting weapon may carry a passive, and brings its tree's talents
     this.rerolls = this.player.flags.rerolls ?? 0;
@@ -835,6 +847,10 @@ export class Game {
     if (c && c.cascadeUntil > this.time && kind !== c.cascadeFrom) mult *= 1.3;
     const f = this.player?.flags ?? {};
     if (f.murkyWater && enemy.inkedUntil > this.time && kind !== 'inkcloud') mult *= 1.2; // Ink Sac talent
+    // gear sets (data/gear.js)
+    if (f.pearlRush && c?.pearlRush) mult *= 1 + c.pearlRush / 100; // Pearl Diver's Kit
+    if (f.choir >= 3 && enemy.listenUntil > this.time) mult *= 1.2; // Choir of the Drowned
+    if (f.lampBeam && inLampBeam(this.player, enemy, f.lampBeam >= 3 ? 560 : 280)) mult *= f.lampBeam >= 3 ? 1.3 : 1.15; // Lamplighter's Rig
     if (f.evilEye && enemy.gazedUntil > this.time && kind !== 'eye') mult *= 1.25; // Watching Eye talent
     if (f.softTarget && enemy.trapUntil > this.time && kind !== 'bubble') mult *= 1.3; // Bubble Net talent
     return mult;
@@ -1183,7 +1199,7 @@ export class Game {
     this.player?.trigger('kill', this, { enemy: e, source });
 
     if (e.final) {
-      this.onDepthCleared();
+      this.onDepthCleared(e);
       return;
     }
     if (big) {
@@ -1220,6 +1236,11 @@ export class Game {
         break;
       case 'chest':
         this.audio.play('chest', { trinket: pk.trinket });
+        if (pk.gear) {
+          // the depth's gear: already in the stash, and the cleared screen lists it
+          this.effects.burst(pk.x, pk.y, '#d58cff', 18, 220);
+          break;
+        }
         if (pk.trinket) this.queueLevelUp('trinket');
         for (let i = 0; i < 1 + (p.flags.chestBonus ?? 0); i++) this.queueLevelUp('normal');
         this.announce(pk.trinket ? 'A trinket!' : 'Treasure!', 1.5);
@@ -1484,8 +1505,11 @@ export class Game {
     this.bankDive();
   }
 
-  /** The final boss is dead: the horde scatters, something far below stirs, the depth is cleared. */
-  onDepthCleared() {
+  /**
+   * The final boss is dead: the horde scatters, something far below stirs, the depth is cleared,
+   * and the boss leaves a chest of gear that drifts over to you.
+   */
+  onDepthCleared(boss = null) {
     this.clearing = CLEAR_DELAY;
     this.clearedAt = this.time;
     this.boss = null;
@@ -1506,6 +1530,14 @@ export class Game {
     this.announce('Far below, something stirs...', CLEAR_DELAY);
 
     const record = this.recordFor(this.level.id);
+    // Gear: saved now (it can't be lost any more); the first clear of a depth always has a set piece.
+    const found = rollLoot(this.level.id, this.rng, !record.cleared);
+    this.loot = addLoot(this.progress, this.heroId, found);
+    if (found.length) {
+      const chest = this.spawnPickup('chest', boss?.x ?? this.player.x, boss?.y ?? this.player.y);
+      chest.gear = true;
+      chest.magnetized = true;
+    }
     record.cleared = true;
     record.bestClear = Math.min(record.bestClear ?? Infinity, this.time);
     // The secret diver: clear a depth while carrying only one weapon the whole dive.
@@ -1552,6 +1584,16 @@ export class Game {
     saveProgress(this.progress);
     if (sound) this.audio.play(sound);
     this.menus.showLoadout(this.loadoutView());
+  }
+
+  /**
+   * Open the stash for gear `slot` in the loadout (null closes it; the open one again closes it).
+   * Leaving a slot marks what was new in it as seen.
+   */
+  openGearSlot(slot) {
+    if (this.gearSlot) markSeen(this.progress, this.gearSlot);
+    this.gearSlot = slot && slot !== this.gearSlot ? slot : null;
+    return true;
   }
 
   /** Debug mode (F3): one more level for a tree. */
@@ -1603,6 +1645,7 @@ export class Game {
           }),
           about: heroAbout(HEROES[this.heroId]),
           tree: this.treeView('character', this.heroId),
+          gear: gearView(this.progress, this.heroId, this.gearSlot ?? null),
         },
         {
           kind: 'weapon',
@@ -1716,6 +1759,13 @@ export class Game {
         name: r.kind === 'character' ? HEROES[r.id].name : WEAPONS[r.id].name,
       })),
       unspent: this.banked ? this.unspentPoints() : 0,
+      // the gear this clear found
+      loot: (this.loot ?? []).map((l) => ({
+        name: l.def.name,
+        color: GEAR_RARITIES[l.def.rarity].color,
+        sprite: { kind: 'gear', id: l.id },
+        note: l.isNew ? `New · ${GEAR_RARITIES[l.def.rarity].name}` : l.scrapXp ? `Spare copy: +${l.scrapXp} XP` : `Copy ${l.copies}: +${(l.copies - 1) * 5}%`,
+      })),
     };
   }
 

@@ -16,6 +16,7 @@ export class Pickup {
     this.value = value;
     this.radius = kind === 'xp' ? 6 : 11;
     this.trinket = false; // chests: also holds a trinket (dropped by elites)
+    this.gear = false; // chests: the depth's gear (dropped by the final boss)
     this.magnetized = false; // flying toward the player
     this.speed = 0;
     this.dead = false;
@@ -128,16 +129,16 @@ export class Pickup {
           ctx.fill();
           break;
         }
-        // Trinket chests glow sea-glass blue and carry a gem on the lid.
+        // Trinket chests glow sea-glass blue and carry a gem on the lid; gear chests glow violet.
         const pulse = 0.5 + 0.5 * Math.sin(game.time * 5);
-        const glow = this.trinket ? '127, 200, 255' : '255, 209, 102';
+        const glow = this.gear ? '213, 140, 255' : this.trinket ? '127, 200, 255' : '255, 209, 102';
         ctx.fillStyle = `rgba(${glow}, ${0.12 + 0.15 * pulse})`;
         ctx.beginPath();
-        ctx.arc(x, y, this.trinket ? 26 : 22, 0, TAU);
+        ctx.arc(x, y, this.trinket || this.gear ? 26 : 22, 0, TAU);
         ctx.fill();
         ctx.fillStyle = '#8a5a24';
         ctx.fillRect(x - 12, y - 8, 24, 17);
-        ctx.fillStyle = this.trinket ? '#9fd8ff' : '#ffd166';
+        ctx.fillStyle = this.gear ? '#e2b8ff' : this.trinket ? '#9fd8ff' : '#ffd166';
         ctx.fillRect(x - 12, y - 8, 24, 6);
         ctx.fillStyle = '#3f2a10';
         ctx.fillRect(x - 2, y - 3, 4, 6);

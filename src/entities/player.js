@@ -4,11 +4,15 @@ import { HEROES } from '../data/heroes.js';
 import { PASSIVES } from '../data/passives.js';
 import { findTalent } from '../data/talents.js';
 import { trinketSources } from '../data/trinkets.js';
+import { gearSources } from '../systems/gear.js';
 import { drawDiver } from '../render/sprites.js';
 import { Weapon } from './weapon.js';
 
 export class Player {
-  /** `loadout`: the talents taken in this character's and every weapon's tree (systems/progression.js). */
+  /**
+   * `loadout`: the talents taken in this character's and every weapon's tree (systems/progression.js),
+   * and `gear`, what the diver has on (systems/gear.js equippedGear).
+   */
   constructor(x, y, heroId, loadout = { character: {}, weapons: {} }) {
     this.heroId = heroId;
     this.hero = HEROES[heroId];
@@ -64,6 +68,8 @@ export class Player {
     const list = [
       { apply: this.hero.stats, rank: 1 },
       { ...this.hero.trait, rank: 1 },
+      // gear: each item's stats, and the bonuses of sets with 2 or more pieces on
+      ...gearSources(this.loadout.gear ?? []),
     ];
     // Some weapons can carry a built-in passive while you own them (`apply` on the weapon).
     for (const w of this.weapons) if (w.def.apply) list.push({ apply: w.def.apply, rank: w.level });
@@ -93,6 +99,7 @@ export class Player {
     const base = CONFIG.player;
     const b = {
       maxHp: base.maxHp,
+      healthPct: 0, // +% max health (gear)
       regen: 0, // health per second
       armor: 0, // flat damage reduction
       speed: 0, // +% move speed
@@ -116,7 +123,7 @@ export class Player {
 
     const oldMax = this.stats ? this.stats.maxHp : null;
     this.stats = {
-      maxHp: Math.max(1, Math.round(b.maxHp)),
+      maxHp: Math.max(1, Math.round(b.maxHp * Math.max(0.2, 1 + b.healthPct))),
       regen: b.regen,
       armor: b.armor,
       moveSpeed: base.moveSpeed * Math.max(0.3, 1 + b.speed),

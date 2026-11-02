@@ -1,8 +1,10 @@
 import { TAU } from '../core/math.js';
+import { GEAR, GEAR_SLOTS } from '../data/gear.js';
 import { drawDroneBody, drawEye, drawStarfish, spiralPath, star } from './sprites.js';
 
 /**
- * Item icons: one small picture per weapon, passive and trinket, drawn with canvas shapes.
+ * Item icons: one small picture per weapon, passive, trinket and piece of gear, drawn with
+ * canvas shapes (gear: one drawing per slot, in each item's own color).
  * Each icon draws into a 32×32 box centred on (0, 0). The HUD draws them straight onto the
  * game canvas (drawItemIcon); HTML menus use them as images (itemIconURL).
  *
@@ -647,9 +649,125 @@ const TRINKET_ICONS = {
   },
 };
 
-const ICONS = { weapon: WEAPON_ICONS, passive: PASSIVE_ICONS, trinket: TRINKET_ICONS };
+// ------------------------------------------------ gear
 
-/** Whether an item has a picture. kind: 'weapon' | 'passive' | 'trinket'. */
+/** '#rrggbb' lighter (`k` above 0) or darker (below 0). */
+function shade(hex, k) {
+  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const to = k >= 0 ? 255 : 0;
+  return `rgb(${c.map((v) => Math.round(v + (to - v) * Math.abs(k))).join(', ')})`;
+}
+
+const BRASS = '#d6b264';
+const GLASS = '#1d5a66';
+
+/** One drawing per gear slot, in the item's `color`. */
+const GEAR_DRAW = {
+  helmet(ctx, color) {
+    // breastplate, dome, round faceplate with a glint
+    polygon(ctx, [[-13, 8], [13, 8], [15, 14], [-15, 14]]);
+    paint(ctx, shade(color, -0.25));
+    circle(ctx, 0, -1, 11.5);
+    paint(ctx, color);
+    circle(ctx, 0, 0, 6);
+    paint(ctx, GLASS, 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    circle(ctx, -2, -2.5, 1.6);
+    ctx.fill();
+    for (const [x, y] of [[-8.5, -6], [8.5, -6], [0, -10.5]]) {
+      circle(ctx, x, y, 1.4);
+      paint(ctx, BRASS, 1);
+    }
+  },
+  suit(ctx, color) {
+    // a canvas diving suit's body, brass collar, belt
+    polygon(ctx, [[-9, -10], [9, -10], [14, -3], [11, 14], [-11, 14], [-14, -3]]);
+    paint(ctx, color);
+    ctx.beginPath();
+    ctx.ellipse(0, -10, 8, 3.2, 0, 0, TAU);
+    paint(ctx, BRASS);
+    ctx.beginPath();
+    ctx.rect(-12, 4, 24, 4);
+    paint(ctx, shade(color, -0.45), 1.2);
+    ctx.beginPath();
+    ctx.moveTo(0, -6);
+    ctx.lineTo(0, 3);
+    ctx.strokeStyle = shade(color, -0.35);
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+  },
+  gloves(ctx, color) {
+    // a heavy glove: cuff, palm, three fingers and a thumb
+    for (const [x, top] of [[-5, -13], [0, -14], [5, -12]]) {
+      ctx.beginPath();
+      ctx.moveTo(x, -1);
+      ctx.lineTo(x, top);
+      ctx.lineCap = 'round';
+      outlinedStroke(ctx, color, 4.4);
+    }
+    ctx.beginPath();
+    ctx.moveTo(-8, 3);
+    ctx.lineTo(-12, -4);
+    outlinedStroke(ctx, color, 4.2);
+    ctx.beginPath();
+    ctx.roundRect(-8, -4, 16, 12, 4);
+    paint(ctx, color);
+    ctx.beginPath();
+    ctx.rect(-9, 8, 18, 6);
+    paint(ctx, shade(color, -0.35));
+    ctx.fillStyle = BRASS;
+    for (const x of [-5, 0, 5]) {
+      circle(ctx, x, 11, 1.1);
+      ctx.fill();
+    }
+  },
+  boots(ctx, color) {
+    // a weighted diving boot with a lead sole
+    polygon(ctx, [[-9, -13], [3, -13], [3, 3], [12, 5], [13, 10], [-9, 10]]);
+    paint(ctx, color);
+    ctx.beginPath();
+    ctx.rect(-10, 10, 24, 4.5);
+    paint(ctx, '#5c6266');
+    ctx.strokeStyle = shade(color, -0.45);
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    for (const y of [-8, -4, 0]) {
+      ctx.moveTo(-6, y);
+      ctx.lineTo(0, y);
+    }
+    ctx.stroke();
+  },
+  tank(ctx, color) {
+    // an air tank: valve wheel on top, two straps
+    ctx.beginPath();
+    ctx.rect(-2.5, -14, 5, 5);
+    paint(ctx, BRASS, 1.2);
+    ctx.beginPath();
+    ctx.moveTo(-6, -14);
+    ctx.lineTo(6, -14);
+    ctx.lineCap = 'round';
+    outlinedStroke(ctx, BRASS, 2.4);
+    ctx.beginPath();
+    ctx.roundRect(-8, -9, 16, 23, 7);
+    paint(ctx, color);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+    ctx.fillRect(-5, -5, 2.5, 14);
+    ctx.beginPath();
+    ctx.rect(-8.5, -2, 17, 3);
+    ctx.rect(-8.5, 7, 17, 3);
+    paint(ctx, shade(color, -0.5), 1);
+  },
+};
+
+// Each item drawn in its slot's shape and its own color; `empty-<slot>` is an empty slot's outline.
+const GEAR_ICONS = Object.fromEntries([
+  ...Object.entries(GEAR).map(([id, item]) => [id, (ctx) => GEAR_DRAW[item.slot](ctx, item.color)]),
+  ...GEAR_SLOTS.map((slot) => [`empty-${slot}`, (ctx) => GEAR_DRAW[slot](ctx, '#3d4c52')]),
+]);
+
+const ICONS = { weapon: WEAPON_ICONS, passive: PASSIVE_ICONS, trinket: TRINKET_ICONS, gear: GEAR_ICONS };
+
+/** Whether an item has a picture. kind: 'weapon' | 'passive' | 'trinket' | 'gear'. */
 export const hasItemIcon = (kind, id) => Boolean(ICONS[kind]?.[id]);
 
 /** Draw an item's icon centred on (x, y), `size` pixels across. Returns false if it has none. */
