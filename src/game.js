@@ -1308,9 +1308,13 @@ export class Game {
       nothingWasted: 'Nothing Wasted: you also get the other card, at normal strength.',
     }[rule] ?? (p.flags.devour && this.choices.length > 1 ? 'Devour: the card you pass up heals you for 10.' : 'Click a card or press its number key');
     const screens = {
-      normal: { eyebrow: `Level ${level}`, title: rule === 'gorge' ? 'Gorge' : this.choices.length === 1 ? 'Take it' : 'Choose an upgrade', hint: normalHint },
+      // "Level 4" as the heading; Gorge and One Path's single card name themselves instead.
+      normal: (() => {
+        const special = rule === 'gorge' ? 'Gorge' : this.choices.length === 1 ? 'Take it' : null;
+        return { eyebrow: special ? `Level ${level}` : '', title: special ?? `Level ${level}`, hint: normalHint };
+      })(),
       trinket: {
-        eyebrow: 'Elite chest · trinket',
+        eyebrow: 'Elite chest',
         title: 'Choose a trinket',
         // Twin Sockets and Inner Shrine (the Hollow Diver) change where trinkets can go.
         hint: `Drag a trinket onto one of your weapons. ${p.flags.twinSockets ? 'Each weapon holds two' : 'Each weapon holds one'}${p.flags.innerShrine ? ', and the suit holds one that works on every weapon' : ''}, for the rest of the dive.`,

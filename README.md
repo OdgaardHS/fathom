@@ -315,7 +315,13 @@ Eye's *Evil Eye* setting up a hard-hitting second weapon.
 
 ```
 index.html            canvas + HTML menus (title, diver, weapon, depths, level-up, pause, game over, cleared)
-style.css             menu styling
+style.css             menu styling, like an old diving helmet drawn a little exaggerated: matte,
+                      hand-hammered copper plates in studded brass bands, brass portholes and
+                      nameplates, dark outlines, rust at the bottom screws, kelp caught on some
+                      plates. Text sits on dark bronze plaques screwed onto the copper (`.plaque`,
+                      and `.tag-plaque` for single labels), like the ones on statues. Fonts come
+                      from Google Fonts (Alfa Slab One, Barlow, Barlow Condensed); offline it falls
+                      back to system fonts.
 serve.py / serve.bat  local dev server
 src/
   main.js             boots everything and starts the loop
@@ -354,7 +360,10 @@ src/
                       depth layers, light, overlay, omens
     omens.js          old-god effects any depth can use (the heartbeat)
     debug.js          debug overlay
-  ui/                 canvas HUD, HTML menus
+  ui/                 canvas HUD (hud.js), HTML menus (menus.js), and metal.js, which draws the
+                      hammered metal surface, porthole rings, studs, rusty corner screws and kelp
+                      at startup (its FINISH sets shine, dent depth and size, patina and grain);
+                      the menus get them as CSS variables, the HUD draws them directly
 ```
 
 Each simulation tick (in `Game.tick`): rebuild the spatial grid → player moves and weapons fire →

@@ -4,9 +4,9 @@ import { itemIconURL } from '../render/icons.js';
 import { drawDiver } from '../render/sprites.js';
 import { formatTime } from './format.js';
 
-// Depth rows darken from shallow teal to near-black as you go down the list.
-const SHALLOW = [27, 101, 112];
-const DEEP = [3, 9, 13];
+// The water in each depth's sight glass, from shallow teal down to near-black.
+const SHALLOW = [40, 140, 150];
+const DEEP = [6, 16, 22];
 
 /**
  * HTML overlay screens (title, characters, weapons, depths, level-up, pause, game over, cleared)
@@ -64,7 +64,7 @@ export class Menus {
         const top = el('span', 'hero-top');
         const names = el('span', 'hero-names');
         names.append(el('span', 'hero-name', '???'), el('span', 'hero-role', 'Locked'));
-        top.append(portrait(hero, { silhouette: true }), names);
+        top.append(porthole(portrait(hero, { silhouette: true }), 'hero-port'), names);
         card.append(top);
         return card;
       }
@@ -73,19 +73,20 @@ export class Menus {
       card.dataset.action = 'hero';
       card.dataset.value = hero.id;
       card.style.setProperty('--accent', hero.accent);
+      hangKelp(card, i, [1, 4]);
+      texOffset(card, i);
 
       const top = el('span', 'hero-top');
       const names = el('span', 'hero-names');
       names.append(el('span', 'hero-name', hero.name), el('span', 'hero-role', hero.role));
-      top.append(portrait(hero), names, el('kbd', 'hero-key', String(i + 1)));
+      top.append(porthole(portrait(hero), 'hero-port'), names, el('kbd', 'hero-key', String(i + 1)));
 
-      card.append(
-        top,
-        el('span', 'hero-blurb', hero.blurb),
-        detail(`Passive · ${hero.trait.name}`, hero.trait.text),
-      );
+      // their words on a dark bronze plaque, so they read easily on the copper
+      const plaque = el('span', 'plaque hero-plaque');
+      plaque.append(el('span', 'hero-blurb', hero.blurb), detail(`Passive · ${hero.trait.name}`, hero.trait.text));
       // Only what makes this diver different: no item icons, no talent counts.
-      if (hero.statsText) card.append(el('span', 'hero-foot', hero.statsText));
+      if (hero.statsText) plaque.append(el('span', 'hero-foot', hero.statsText));
+      card.append(top, plaque);
       return card;
     });
     this.screens.heroes.querySelector('[data-heroes]').replaceChildren(...cards);
@@ -100,6 +101,8 @@ export class Menus {
       card.dataset.value = w.id;
       card.disabled = !w.unlocked;
       card.style.setProperty('--accent', w.color);
+      hangKelp(card, i, [2, 7, 10]);
+      texOffset(card, i);
 
       const top = el('span', 'hero-top');
       const names = el('span', 'hero-names');
@@ -108,9 +111,11 @@ export class Menus {
       top.append(itemIcon('card-icon weapon-icon', { kind: 'weapon', id: w.id }, w.icon), names);
       if (i < 9) top.append(el('kbd', 'hero-key', String(i + 1))); // number keys go up to 9
 
-      card.append(top, el('span', 'hero-blurb', w.unlocked ? w.description : (w.foundText ?? 'Find it on a dive to unlock it.')));
-      if (w.unlocked && w.passiveText) card.append(detail('Built in', w.passiveText));
-      if (w.unlocked) card.append(el('span', 'hero-foot', `${w.talents.length} talents · leans on ${w.tags.map((t) => TAG_LABELS[t]).join(', ')}`));
+      const plaque = el('span', 'plaque hero-plaque');
+      plaque.append(el('span', 'hero-blurb', w.unlocked ? w.description : (w.foundText ?? 'Find it on a dive to unlock it.')));
+      if (w.unlocked && w.passiveText) plaque.append(detail('Built in', w.passiveText));
+      if (w.unlocked) plaque.append(el('span', 'hero-foot', `${w.talents.length} talents · leans on ${w.tags.map((t) => TAG_LABELS[t]).join(', ')}`));
+      card.append(top, plaque);
       return card;
     });
     this.screens.weapons.querySelector('[data-weapons]').replaceChildren(...cards);
@@ -124,9 +129,15 @@ export class Menus {
 
     const rows = entries.map((d, i) => {
       const row = el('li', `depth depth-${d.status}`);
-      row.style.background = depthColor(i / (entries.length - 1));
+      // deeper plates are darker and weedier, and their sight glass shows darker water
+      const t = i / Math.max(1, entries.length - 1);
+      row.style.setProperty('--depth', t.toFixed(3));
+      row.style.setProperty('--water', depthColor(t));
+      if (t >= 0.3) hangKelp(row, i, [i], i % 2 ? 'kelp-b' : 'kelp-a');
+      row.append(el('span', 'depth-shade'), el('span', 'depth-glass'));
+      texOffset(row, i);
 
-      const info = el('div', 'depth-info');
+      const info = el('div', 'depth-info plaque');
       info.append(el('span', 'depth-meters', d.depth), el('span', 'depth-name', d.name), el('span', 'depth-blurb', d.blurb));
       row.append(info);
 
@@ -172,6 +183,10 @@ export class Menus {
     const special = { talent: ' card-talent', trinket: ' card-trinket' };
     const cards = choices.map((choice, i) => {
       const card = el('button', `card${special[choice.kind] ?? ''}`);
+      // one card in each draw has some kelp caught on it
+      const kelpy = (choices.length + (choices[0]?.name?.length ?? 0)) % choices.length;
+      hangKelp(card, i, [kelpy]);
+      texOffset(card, i);
       card.type = 'button';
       card.dataset.action = 'pick';
       card.dataset.value = String(i);
@@ -182,30 +197,30 @@ export class Menus {
         card.classList.toggle('selected', selected === i);
         card.classList.toggle('dimmed', selected !== null && selected !== i);
       }
-      card.append(
-        itemIcon('card-icon', choice.sprite, choice.icon),
-        el('span', 'card-tag', choice.tag),
-        el('span', 'card-name', choice.name),
-      );
+      card.append(itemIcon('card-icon', choice.sprite, choice.icon), el('span', 'card-name', choice.name));
       // The Hollow Diver's cards are stronger: say by how much.
       if (choice.strength > 1.001) {
         const badge = el('span', `card-strength${choice.aftertaste ? ' aftertaste' : ''}`, `${Math.round((choice.strength - 1) * 100)}% stronger`);
         if (choice.aftertaste) badge.title = 'Aftertaste: the card you passed up last time, back and stronger';
         card.append(badge);
       }
-      if (choice.text) card.append(el('span', 'card-text', choice.text));
+      // what it is and what it does, on a dark bronze plaque
+      const plaque = el('span', 'plaque card-plaque');
+      plaque.append(el('span', 'card-tag', choice.tag));
+      if (choice.text) plaque.append(el('span', 'card-text', choice.text));
       for (const [label, text] of choice.details ?? []) {
         const line = el('span', 'card-detail');
         line.append(el('b', null, label), el('span', null, text));
-        card.append(line);
+        plaque.append(line);
       }
-      if (choice.note) card.append(el('span', 'card-note', choice.note));
-      if (choice.affects?.length) card.append(affectsRow(choice.affects));
+      if (choice.note) plaque.append(el('span', 'card-note', choice.note));
+      if (choice.affects?.length) plaque.append(affectsRow(choice.affects));
       if (choice.tags?.length) {
         const tags = el('span', 'card-tags');
         tags.append(el('em', null, 'Plays off'), ...choice.tags.map((t) => el('span', null, t)));
-        card.append(tags);
+        plaque.append(tags);
       }
+      card.append(plaque);
       return card;
     });
     screen.querySelector('[data-cards]').replaceChildren(...cards);
@@ -237,7 +252,7 @@ export class Menus {
       row.append(b);
     }
     const info = view.pick ? 'Click it again to go through with it. Esc or another item changes your mind.' : 'Eat a weapon or pour out a passive to free its slot. The cards change to match.';
-    box.replaceChildren(el('p', 'loadout-title', 'Feed the suit'), el('p', 'loadout-info', info), row);
+    box.replaceChildren(el('p', 'loadout-title', 'Feed the suit'), el('p', 'loadout-info plaque', info), row);
   }
 
   // ------------------------------------------------ trinket screen: your weapons
@@ -285,7 +300,7 @@ export class Menus {
       if (selected !== null && s.open) slot.append(el('kbd', 'slot-key', String(i + 1)));
       slots.append(slot);
     });
-    this.loadoutInfo = el('p', 'loadout-info');
+    this.loadoutInfo = el('p', 'loadout-info plaque');
     // The explanation sits above the slots, so it stays in view while you drag on a small screen.
     box.replaceChildren(el('p', 'loadout-title', 'Your weapons'), this.loadoutInfo, slots);
     this.markSlots(selected);
@@ -598,19 +613,24 @@ function renderTree(box, view) {
     line.setAttribute('class', `tree-gate${gate.met ? ' met' : ''}`);
     svg.append(line);
   }
+  // Pipes between talents: every pipe's dark outline first, then the pipes on top of them.
+  const pipes = [];
   for (const n of view.nodes) {
     for (const key of n.from) {
       const parent = view.nodes.find((p) => p.key === key);
       if (!parent) continue;
-      const a = center(parent);
-      const b = center(n);
+      const state = parent.rank > 0 && n.rank > 0 ? 'taken' : parent.rank > 0 ? 'open' : '';
+      pipes.push({ a: center(parent), b: center(n), state });
+    }
+  }
+  for (const layer of ['outline', 'pipe']) {
+    for (const { a, b, state } of pipes) {
       const line = document.createElementNS(svg.namespaceURI, 'line');
       line.setAttribute('x1', a.x);
       line.setAttribute('y1', a.y + NODE / 2);
       line.setAttribute('x2', b.x);
       line.setAttribute('y2', b.y - NODE / 2);
-      const state = parent.rank > 0 && n.rank > 0 ? 'taken' : parent.rank > 0 ? 'open' : '';
-      line.setAttribute('class', `tree-edge ${state}`);
+      line.setAttribute('class', layer === 'outline' ? 'tree-pipe' : `tree-edge ${state}`);
       svg.append(line);
     }
   }
@@ -702,11 +722,15 @@ function slotAt(x, y) {
   return document.elementFromPoint(x, y)?.closest('.slot') ?? null;
 }
 
+/** The numbers after a dive, each in a rolling counter: one window per digit. */
 function renderStats(container, stats) {
   container.replaceChildren(
     ...stats.map(([name, value]) => {
+      const counter = el('span', 'stat-value');
+      counter.setAttribute('aria-label', String(value));
+      for (const ch of String(value)) counter.append(el('i', /[0-9]/.test(ch) ? null : 'sep', ch));
       const stat = el('div', 'stat');
-      stat.append(el('span', 'stat-value', String(value)), el('span', 'stat-label', name));
+      stat.append(counter, el('span', 'stat-label', name));
       return stat;
     }),
   );
@@ -773,6 +797,29 @@ function image(className, src) {
   img.alt = '';
   img.draggable = false;
   return img;
+}
+
+/** `child` (a picture) behind the glass of a brass porthole. */
+function porthole(child, className) {
+  const port = el('span', `port ${className}`);
+  port.append(child);
+  return port;
+}
+
+/** Show a different patch of the hammered surface on the n-th plate of a list. */
+function texOffset(node, n) {
+  node.style.setProperty('--tex-x', `${(n * 97) % 256}px`);
+  node.style.setProperty('--tex-y', `${(n * 61) % 256}px`);
+}
+
+/**
+ * Some kelp caught on the n-th plate of a list, if n is one of `which`: over its top left corner
+ * (clear of the number key), or wherever `corner` says, in one of the three clumps.
+ */
+function hangKelp(node, n, which, corner = 'kelp-a') {
+  if (!which.includes(n)) return;
+  node.classList.add(corner);
+  node.style.setProperty('--kelp-pick', `var(--kelp-${(n % 3) + 1})`);
 }
 
 function detail(title, text) {
