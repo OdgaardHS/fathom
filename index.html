@@ -30,27 +30,18 @@
         </div>
       </section>
 
-      <section class="screen screen-clear" data-screen="heroes" hidden>
-        <div class="panel bare hero-panel">
-          <h2>Choose your diver</h2>
-          <p class="hint">Each diver has their own passive and talents. You pick a weapon next.</p>
-          <div class="heroes" data-heroes></div>
-          <div class="actions">
-            <button class="btn" type="button" data-action="back">Back</button>
+      <!-- Between dives: pick diver and weapon, and spend talent points in both trees, on one screen. -->
+      <section class="screen screen-clear" data-screen="loadout" hidden>
+        <div class="panel bare lo-panel">
+          <h2>Loadout</h2>
+          <div class="lo-cols">
+            <div class="lo-col" data-col="character"></div>
+            <div class="lo-col" data-col="weapon"></div>
           </div>
-          <p class="hint">Press a number to choose · <kbd>Enter</kbd> keeps the highlighted diver</p>
-        </div>
-      </section>
-
-      <section class="screen screen-clear" data-screen="weapons" hidden>
-        <div class="panel bare hero-panel">
-          <h2>Choose your weapon</h2>
-          <p class="hint">Any diver can use any weapon. Every weapon has its own talent tree, which grows as you dive with it.</p>
-          <div class="heroes weapons" data-weapons></div>
-          <div class="actions">
+          <div class="actions lo-actions">
             <button class="btn" type="button" data-action="back">Back</button>
+            <button class="btn primary" type="button" data-action="chooseDepth">Choose depth <kbd>Enter</kbd></button>
           </div>
-          <p class="hint">Press a number to choose · <kbd>Enter</kbd> keeps the highlighted weapon</p>
         </div>
       </section>
 
@@ -61,8 +52,7 @@
           <p class="hint">Clear a depth to unlock the one below it.</p>
           <ol class="depths" data-depths></ol>
           <div class="actions">
-            <button class="btn" type="button" data-action="back">Change weapon</button>
-            <button class="btn" type="button" data-action="talents" data-talents-button>Talents</button>
+            <button class="btn" type="button" data-action="back">Loadout</button>
           </div>
           <p class="hint"><kbd>Enter</kbd> dives into the deepest open depth</p>
         </div>
@@ -112,10 +102,10 @@
           <div class="build" data-build></div>
           <div class="actions">
             <button class="btn primary" type="button" data-action="restart">Dive again</button>
-            <button class="btn" type="button" data-action="talents" data-talents-button>Talents</button>
+            <button class="btn" type="button" data-action="loadout" data-talents-button>Loadout</button>
             <button class="btn" type="button" data-action="depths">Choose depth</button>
           </div>
-          <p class="hint">or press <kbd>R</kbd> · <kbd>T</kbd> for talents · seed <span data-seed></span></p>
+          <p class="hint">or press <kbd>R</kbd> · <kbd>L</kbd> for the loadout · seed <span data-seed></span></p>
         </div>
       </section>
 
@@ -132,29 +122,8 @@
           <div class="build" data-build></div>
           <div class="actions">
             <button class="btn primary" type="button" data-action="depths">Continue</button>
-            <button class="btn" type="button" data-action="talents" data-talents-button>Talents</button>
+            <button class="btn" type="button" data-action="loadout" data-talents-button>Loadout</button>
           </div>
-        </div>
-      </section>
-
-      <section class="screen" data-screen="talents" hidden>
-        <div class="panel wide talents-panel kelp-b">
-          <h2>Talents</h2>
-          <p class="hint">Diving levels up your diver, and every weapon you carry, from the pearls you collect. Each level is a point to spend in its tree. Respec is free.</p>
-          <div class="talent-layout">
-            <nav class="talent-tabs" data-talent-tabs></nav>
-            <div class="talent-main">
-              <div class="talent-head plaque" data-talent-head></div>
-              <div class="talent-tree" data-talent-tree></div>
-              <div class="talent-info plaque" data-talent-info></div>
-            </div>
-          </div>
-          <div class="actions">
-            <button class="btn" type="button" data-action="talentReset">Reset this tree</button>
-            <button class="btn" type="button" data-action="talentLevel" data-talent-debug hidden>+1 level (debug)</button>
-            <button class="btn primary" type="button" data-action="talentsDone">Done</button>
-          </div>
-          <p class="hint">Click a talent to learn it · right-click to take a point back · <kbd>Esc</kbd> when you're done</p>
         </div>
       </section>
     </div>

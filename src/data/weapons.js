@@ -23,7 +23,7 @@ import { trident } from './weapons/trident.js';
  *   talents     its share of the talent pool while you carry it (data/talents.js)
  *   levels      stats per level (index 0 = level 1). `text` describes what that level adds.
  *   apply(b, rank, player, flags)  optional built-in passive while you carry it
- *   passiveText optional, describes that passive on the weapon select screen
+ *   passiveText optional, describes that passive on the loadout
  *   hud(game)   optional extra HUD line (e.g. drone count)
  *   layer       'under' draws below enemies (auras); default draws on top
  *   create(w)   optional, set up w.state when the weapon is gained

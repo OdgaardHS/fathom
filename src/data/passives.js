@@ -1,5 +1,7 @@
 /**
- * Passive items, offered to every hero on normal level-ups.
+ * Passive items: the diver's own stats (health, speed, armor, regeneration, pickup range, pearl
+ * value), offered to every hero on normal level-ups, 4 at most. What makes weapons better is
+ * weapon augments instead, each for one weapon (data/augments.js).
  *
  * `apply(b, level)` adds to the player's stat buckets (see Player.recalcStats).
  * Bonuses to the same stat add together; different stats multiply. Hero talents
@@ -11,28 +13,6 @@
  * `tags` name the stat, for those icons and for the talent system (which talents it pairs with).
  */
 export const PASSIVES = {
-  might: {
-    name: 'Might',
-    icon: 'Mi',
-    color: '#ff6b6b',
-    maxLevel: 5,
-    text: '+10% damage',
-    tags: ['damage'],
-    apply: (b, l) => {
-      b.might += 0.1 * l;
-    },
-  },
-  haste: {
-    name: 'Haste',
-    icon: 'Ha',
-    color: '#ffd166',
-    maxLevel: 5,
-    text: '+10% haste',
-    tags: ['cooldown'],
-    apply: (b, l) => {
-      b.haste += 0.1 * l;
-    },
-  },
   vitality: {
     name: 'Vitality',
     icon: 'Vi',
@@ -66,17 +46,6 @@ export const PASSIVES = {
       b.magnet += 0.3 * l;
     },
   },
-  reach: {
-    name: 'Reach',
-    icon: 'Re',
-    color: '#9775fa',
-    maxLevel: 5,
-    text: '+10% size',
-    tags: ['area'],
-    apply: (b, l) => {
-      b.area += 0.1 * l;
-    },
-  },
   recovery: {
     name: 'Recovery',
     icon: 'Rc',
@@ -97,39 +66,6 @@ export const PASSIVES = {
     tags: ['armor'],
     apply: (b, l) => {
       b.armor += l;
-    },
-  },
-  duplicator: {
-    name: 'Duplicator',
-    icon: 'Du',
-    color: '#e599f7',
-    maxLevel: 2,
-    text: '+1 amount',
-    tags: ['amount'],
-    apply: (b, l) => {
-      b.amount += l;
-    },
-  },
-  persistence: {
-    name: 'Persistence',
-    icon: 'Pe',
-    color: '#74c0fc',
-    maxLevel: 5,
-    text: '+12% duration',
-    tags: ['duration'],
-    apply: (b, l) => {
-      b.duration += 0.12 * l;
-    },
-  },
-  overdrive: {
-    name: 'Overdrive',
-    icon: 'Ov',
-    color: '#ff922b',
-    maxLevel: 5,
-    text: '+10% attack speed',
-    tags: ['attackSpeed'],
-    apply: (b, l) => {
-      b.attackSpeed += 0.1 * l;
     },
   },
   insight: {

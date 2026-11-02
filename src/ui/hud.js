@@ -1,5 +1,6 @@
 import { CONFIG } from '../config.js';
 import { TAU } from '../core/math.js';
+import { RARITIES, RARITY_ORDER } from '../data/augments.js';
 import { PASSIVES } from '../data/passives.js';
 import { TRINKETS, mountsOf } from '../data/trinkets.js';
 import { drawItemIcon } from '../render/icons.js';
@@ -392,6 +393,45 @@ function levelBadge(ctx, text, cx, cy) {
   ctx.restore();
 }
 
+/** A small gem with how many augments a weapon has, in the color of the rarest one. */
+function augmentBadge(ctx, augments, cx, cy) {
+  const best = Math.max(...augments.map((a) => RARITY_ORDER.indexOf(a.rarity)));
+  const color = RARITIES[RARITY_ORDER[best]].color;
+  const r = 9;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r);
+  ctx.lineTo(cx + r, cy);
+  ctx.lineTo(cx, cy + r);
+  ctx.lineTo(cx - r, cy);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r);
+  ctx.lineTo(cx + r, cy);
+  ctx.lineTo(cx, cy);
+  ctx.lineTo(cx - r, cy);
+  ctx.closePath();
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = OUTLINE;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r);
+  ctx.lineTo(cx + r, cy);
+  ctx.lineTo(cx, cy + r);
+  ctx.lineTo(cx - r, cy);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.font = `700 10px ${PLATE_FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = INK;
+  ctx.fillText(String(augments.length), cx, cy + 1);
+  ctx.restore();
+}
+
 // ------------------------------------------------ the action bar
 
 /**
@@ -420,6 +460,7 @@ function drawActionBar(ctx, p, w, h) {
       itemPicture(ctx, 'weapon', wp.id, wp.def.icon, sx, y, WEAPON_SLOT);
       cooldownSweep(ctx, wp, sx, y, WEAPON_SLOT);
       levelBadge(ctx, String(wp.level), sx + WEAPON_SLOT - 2, y + WEAPON_SLOT - 2);
+      if (wp.augments.length) augmentBadge(ctx, wp.augments, sx + WEAPON_SLOT - 1, y + 1);
     }
     label(ctx, String(i + 1), sx + 6, y + 5, { size: 10 });
 

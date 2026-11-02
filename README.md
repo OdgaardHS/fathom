@@ -31,13 +31,15 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
 | Key | Action |
 | --- | --- |
 | WASD / arrow keys | Swim (weapons fire on their own) |
-| Number keys or click | Pick an upgrade or trinket (and a diver or weapon on those screens; the first 9 weapons have keys) |
+| Number keys or click | Pick an upgrade or trinket |
+| Click | On the loadout: a porthole to swap diver or weapon, a talent to learn it |
+| Right-click | On the loadout: take a point back from a talent |
 | Drag | On the trinket screen, drag a trinket onto one of your weapons (or press its number, then the weapon's; Esc puts it back) |
 | R | Spit out both level-up cards and draw new ones (the Hollow Diver's *Spit It Out*) |
-| T | Open the talent trees from the game-over screen |
+| L | Open the loadout from the game-over or cleared screen |
 | Esc / P | Pause (the pause screen also has Music and Sounds on/off buttons) |
 | M | Mute or unmute all sound |
-| Enter | Dive into the deepest open depth (on the depth screen) |
+| Enter | On the loadout: go on to the depths. On the depth screen: dive into the deepest open one |
 | R or Enter | Dive again after dying |
 | F3 or \` | Toggle debug overlay |
 
@@ -45,6 +47,12 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
 
 - **Depth map**: seven depths from Sunlit Shallows (0–200 m) down to something below the sea floor.
   Clearing a depth's boss unlocks the next. Progress is saved in the browser.
+- **Enemies come in waves**: most arrive in packs, a school of one kind swimming in from one side
+  every 5 to 8 seconds, with the rest trickling in between, and there are plenty from the first
+  seconds. They're tough enough that most weapons don't kill them in one hit: every enemy but a
+  depth's final boss has 1.8 times its listed health, and everything gets 20% tougher per minute.
+  The knobs are `CONFIG.enemies` in `src/config.js` (`hpBase`, `hpScalePerMinute`, `packShare`,
+  `packEvery`) and each depth's `timeline` in `src/data/levels.js`.
 - **Sunlit Shallows** (depth 1) is built: a pale sandy seabed with ripples, coral, rocks, seaweed,
   sunlight rippling over the sand, sun rays and drifting particles. Enemies: snappers, reef crabs,
   jellyfish, pufferfish (fire a ring of spines), barracuda (telegraphed lunges). Elites: a pufferfish
@@ -62,8 +70,9 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
   its second, closer pass an eye opens and looks up.
 - Depth 2 (Kelp Twilight) isn't built yet, so in normal play you can't reach The Open Blue. Use
   debug mode (below) to try it.
-- **Mix and match a diver and a weapon.** Before each dive you pick a character, then a starting
-  weapon. Any character can use any weapon.
+- **Mix and match a diver and a weapon.** Before each dive, the **loadout** shows the diver and
+  the starting weapon side by side, each with its talent tree: click a porthole above a column to
+  swap, learn talents right there, then *Choose depth*. Any character can use any weapon.
   - **Characters** each have one passive and a talent tree of their own:
     - **Otto Brask, ROV Pilot**: *Field Engineer*, +20% duration. 90 health. Visor helmet,
       radio antenna, a drone docked on his back and a controller in his hands.
@@ -81,14 +90,15 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
       swims 15% slower. A helmet half grown over with coral, a starfish on top, anemones trailing
       behind; her plates circle her as coral nubs.
     - **The Hollow Diver, Nobody inside** (secret): *Hollow*, level-ups show 2 cards instead of 3,
-      but the card you take is 25% stronger. A passive gives 25% more (Might: +12.5% damage a level),
-      and a weapon level-up improves its weapon 25% more (+4 damage becomes +5; counts and pierce
-      round to the nearest whole number). An old copper suit gone green, with no air tank, empty
+      but the card you take is 25% stronger. A passive gives 25% more (Vitality: +25 max health a
+      level), an augment 25% more (+5% damage becomes +6.25%; an exotic's +1 rounds, so only a card
+      worth 1.5 or more makes it +2), and a weapon level-up improves its weapon 25% more (+4 damage
+      becomes +5; counts and pierce round to the nearest whole number). An old copper suit gone green, with no air tank, empty
       gloves on loose cuffs, and a helmet whose front window is missing: inside there's only a
       deep-blue dark with specks drifting in it. Dark wisps leak from it instead of bubbles.
       **To unlock it**, clear a depth while carrying only one weapon the whole dive. Until then the
-      diver select shows a dark silhouette with no name and no hint, and its talent tree is hidden
-      (debug mode shows it). It's saved in `progress.secrets`.
+      loadout shows a dark silhouette behind a barred porthole, with no name and no hint, and its
+      talent tree is hidden (debug mode shows it). It's saved in `progress.secrets`.
   - **13 weapons**, each with its own talent tree (see [Weapons](#weapons) below). More weapons can be
     picked up on level-up cards during a dive, up to 4.
   - Every weapon but one can be picked at the start for now. **The Watching Eye is found deeper
@@ -105,14 +115,21 @@ straight from a file on disk, so it needs this tiny local server. Any static ser
   so up to two trinkets). Every trinket does something for the weapon it's on **and** something with
   your other weapons (see below).
 - **Weapon bar** (bottom centre, like a spell bar): a row of numbered weapon slots with each
-  weapon's level, the socket for its trinket right underneath each one, and your passives in a
-  small block to the right (in a row above on narrow screens). While a weapon recharges, a dark
+  weapon's level, a small gem with how many augments it has (in the color of its rarest one), the
+  socket for its trinket right underneath each one, and your passives in a small block to the right
+  (in a row above on narrow screens). While a weapon recharges, a dark
   wedge sweeps around its slot like a spell cooldown. Weapon notes (drones out, Conductor Coil
   charge, the Watching Eye's heat) sit just above the bar; a boss's health bar shows at the top,
   under the timer.
-- **12 passives**, offered on normal level-up cards next to weapons. A passive's card only says
-  what it does ("+1 amount"); below that, the icons of the weapons you carry that it affects.
-  Hover an icon to see what it does for that weapon. Pearls are XP.
+- **Weapon augments** make one weapon better, never all of them. Their level-up card names the
+  weapon ("Might · on your Harpoon: +5% damage"), and a weapon can take any number of them. They
+  come in rarities: **common** (+5% to one stat), **uncommon** (+10%), **rare** (+8% to two stats,
+  with a blue edge) and **exotic** (purple: *Plus One*, one more of whatever the weapon makes more
+  of, like one more harpoon per volley or one more jump for the Eel Lance's arcs; Sonar Pulse, which
+  has nothing to count, gets +12% to all its stats instead). An augment only boosts stats its weapon
+  uses. They're defined in `src/data/augments.js`.
+- **6 passives** for the diver themselves: Vitality, Swiftness, Armor, Recovery, Attractor and
+  Insight, up to 4 at once, offered on level-up cards next to weapons and augments. Pearls are XP.
 
 ## Weapons
 
@@ -162,8 +179,12 @@ files. Sound starts on your first click or key press, since browsers block audio
 
 ## Talent trees
 
-Between dives you grow stronger through talent trees, shaped like a modern WoW spec tree. Open them
-with **Talents** on the depth screen, the game-over screen (or press **T**) or the cleared screen.
+Between dives you grow stronger through talent trees, shaped like a modern WoW spec tree. They live
+on the **loadout**, the screen between the title and the depths: the diver's tree and the equipped
+weapon's tree side by side (the diver's on the left), each with its level and points. Pointing at a
+talent, a porthole or a name shows what it does on a bronze plaque beside it. To work on another weapon's tree, equip it. A small amber lamp
+on a porthole says that diver or weapon has points waiting. The game-over and cleared screens have
+a **Loadout** button (or press **L**) that says how many points are waiting in all.
 
 - **Points**: your diver levels up from every pearl you collect in a dive, and each weapon from the
   pearls you collect while carrying it. The XP is banked when the dive ends, whether you die, clear
@@ -181,7 +202,7 @@ with **Talents** on the depth screen, the game-over screen (or press **T**) or t
   on it), or reset the whole tree.
 - **In a dive**, everything you've learned is active from the start. A weapon's talents switch on
   when you pick that weapon up.
-- **Debug mode** (F3) adds a "+1 level" button to the tree screen for testing.
+- **Debug mode** (F3) adds a "+1 level" button to each tree on the loadout, for testing.
 
 **Otto's tree** leans into machines: *Scrap Recycler*, *Spotter Uplink*, *Auto-Loader* (every few
 attacks reload at once), *Emergency Venting*, *Signal Boost* (marks jump on when their enemy dies),
@@ -236,17 +257,19 @@ Every hero uses the same stats, and a stat always means the same thing for every
 
 | Stat | What it does | Raised by |
 | --- | --- | --- |
-| might | damage of everything | Might |
-| haste | weapons and drone launches recharge faster; the Watching Eye heats up faster | Haste |
-| duration | effects, clouds, traps and drones last longer, shots travel further, tendrils grow longer | Persistence |
-| attack speed | drones, orbiting weapons and tendrils attack faster | Overdrive |
-| area | size of weapons, shots, blasts, clouds and reach | Reach |
-| amount | extra projectiles, orbiters, clouds, lures, thrusts, tendrils, eyes and arc jumps; drone lasers hit one more enemy | Duplicator |
+| might | damage | Might augments (one weapon each) |
+| haste | weapons and drone launches recharge faster; the Watching Eye heats up faster | Haste augments |
+| duration | effects, clouds, traps and drones last longer, shots travel further, tendrils grow longer | Persistence augments |
+| attack speed | drones, orbiting weapons and tendrils attack faster | Overdrive augments |
+| area | size of weapons, shots, blasts, clouds and reach | Reach augments |
+| amount | extra projectiles, orbiters, clouds, lures, thrusts, tendrils, eyes and arc jumps; drone lasers hit one more enemy | the exotic *Plus One* augment |
 | growth | pearl (XP) value | Insight, Jory's *Wellerman* |
 | magnet, speed, armor, regen, max health | as named | Attractor, Swiftness, Armor, Recovery, Vitality |
 
 Bonuses to the same stat **add**; different stats **multiply**. Haste turns into cooldowns as
-`1 / (1 + haste)`, so it never reaches zero.
+`1 / (1 + haste)`, so it never reaches zero. A weapon's augments add to the same stats, but only
+while that weapon (or its drones) is working: `Weapon.withBoost` in `src/entities/weapon.js` shows
+`player.stats` with them on top for the length of its turn.
 
 **Talents never add stats or change what a stat means.** Each one changes how a skill works or
 scales, so the stats you're already collecting pay off in a new way, often a step or two removed.
@@ -314,7 +337,7 @@ Eye's *Evil Eye* setting up a hard-hitting second weapon.
 ## How it's put together
 
 ```
-index.html            canvas + HTML menus (title, diver, weapon, depths, level-up, pause, game over, cleared)
+index.html            canvas + HTML menus (title, loadout, depths, level-up, pause, game over, cleared)
 style.css             menu styling, like an old diving helmet drawn a little exaggerated: matte,
                       hand-hammered copper plates in studded brass bands, brass portholes and
                       nameplates, dark outlines, rust at the bottom screws, kelp caught on some
@@ -348,7 +371,8 @@ src/
     weapons/          one file per newer weapon (eel, ink, trident, bubbles, lure, shrimp,
                       tendrils, eye), plus common.js with helpers they share
     trinkets.js       trinkets: what each does on its weapon and with your other weapons
-    passives.js       stat-boosting items
+    passives.js       the diver's own stats (health, speed, armor, regen, pickup range, pearl value)
+    augments.js       weapon augments: one weapon each, any number, common to exotic
   entities/           player (stats, talent and trinket hooks), drone, enemy, enemy behaviours,
                       projectile, hazard, pickup, weapon (incl. its trinket slot)
   systems/            spawner, upgrade rolls, progression (levels, talent points, trees),
@@ -405,14 +429,16 @@ A projectile can take `onHit` to do something other than plain damage (Bubble Ne
 `selfTrinkets: true` if the weapon applies Undertow Stone and Split Coral its own way. `foundFrom`
 (a depth id) makes it a weapon you have to find before you can start with it.
 Scale by the shared stats (`might`, `area`, `cooldown`, `amount`, `duration`, `attackSpeed`) so
-passives and talents affect it, and list them in `scaling` (stat → what it does for this weapon) so
-passive cards show its icon. Give it `tags` (the stats it leans on), a talent list in
+augments and talents affect it, and list them in `scaling` (stat → what it does for this weapon):
+that decides which augments it can get, and `scaling.amount` is the text of its exotic *Plus One*. Give it `tags` (the stats it leans on), a talent list in
 `WEAPON_TALENTS` in `src/data/talents.js` and a tree for them in `WEAPON_TREES` in
 `src/data/trees.js`, and optionally `apply(b, rank, player, flags)` plus
 `passiveText` for something built in while you carry it. It shows up on the weapon screen and on
 level-up cards automatically.
 
-**A passive:** add an entry to `src/data/passives.js` with `apply(b, level)` and `tags`.
+**A passive:** add an entry to `src/data/passives.js` with `apply(b, level)` and `tags`. Passives
+are for the diver's own stats; anything that makes a weapon better is an augment
+(`src/data/augments.js`: its rarities, values and how often each comes up).
 
 **Item pictures:** weapons, passives and trinkets each get a picture from `src/render/icons.js`,
 drawn in a 32×32 box. Add a function under the item's id there; until you do, the item shows its

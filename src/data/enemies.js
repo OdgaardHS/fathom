@@ -14,7 +14,7 @@ export const ENEMY_TYPES = {
   // ------------------------------------------------------------- Sunlit Shallows
   snapper: {
     name: 'Snapper',
-    hp: 5,
+    hp: 9,
     speed: 92,
     damage: 5,
     radius: 10,

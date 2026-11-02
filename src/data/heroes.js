@@ -136,7 +136,7 @@ export const HEROES = {
     accent: '#8c7ae6',
     // An old copper suit gone green. No air tank: it doesn't breathe, and dark wisps leak from it.
     palette: { suit: '#3c6555', helmet: '#8fbfa3', trim: '#24392f', fins: '#1c2a26', gear: 'hollow', tank: false, wisps: true },
-    secret: true, // hidden on the diver select until you clear a depth with only one weapon
+    secret: true, // hidden on the loadout until you clear a depth with only one weapon
     stats() {},
     trait: {
       name: 'Hollow',

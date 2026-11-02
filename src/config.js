@@ -45,7 +45,14 @@ export const CONFIG = {
   enemies: {
     max: 450, // regular spawning pauses at this many live enemies
     spawnMargin: 60, // spawn this far outside the visible area
-    hpScalePerMinute: 0.15, // +15% enemy HP per minute survived
+    // Enemy toughness: every enemy but a depth's final boss has `hpBase` times its listed health,
+    // and everyone gains `hpScalePerMinute` more per minute survived (+20%).
+    hpBase: 1.8,
+    hpScalePerMinute: 0.2,
+    // Most enemies arrive in packs: every `packEvery` seconds (a random time in that range) a
+    // school of one kind swims in from one side, `packShare` of the spawn rate. The rest trickle in.
+    packShare: 0.6,
+    packEvery: [5, 8],
     separation: 0.5, // 0..1, how hard overlapping enemies push apart
   },
 

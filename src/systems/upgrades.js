@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { RARITIES, augmentsFor } from '../data/augments.js';
 import { PASSIVES } from '../data/passives.js';
 import { TRINKETS, TRINKET_ORDER, worksOn } from '../data/trinkets.js';
 import { WEAPONS, weaponsUsing } from '../data/weapons.js';
@@ -45,7 +46,7 @@ export function findUpgrade(player, choice, canOffer = () => true) {
   return upgradePool(player, canOffer).find((o) => o.kind === choice.kind && o.id === choice.id && Boolean(o.isNew) === Boolean(choice.isNew)) ?? null;
 }
 
-/** Every weapon and passive card that could be offered right now. */
+/** Every weapon, augment and passive card that could be offered right now. */
 function upgradePool(player, canOffer) {
   const pool = [];
   const eaten = new Set(player.eaten.map((w) => w.id)); // weapons the Hollow Diver ate don't come back
@@ -53,6 +54,8 @@ function upgradePool(player, canOffer) {
 
   for (const w of player.weapons) {
     if (!w.isMaxed) pool.push(weaponOption(w.id, w.level + 1, 1));
+    // augments for it: any number, rarer the stronger
+    for (const aug of augmentsFor(w.id)) pool.push(augmentOption(w, aug));
   }
   if (player.weapons.length < player.weaponSlots) {
     // With many weapons, each new one is a little rarer, so new-weapon cards don't crowd out upgrades.
@@ -199,6 +202,9 @@ export function applyUpgrade(choice, game, strength = choice.strength ?? 1) {
         p.recalcStats();
       } else p.setPassive(choice.id, choice.level, strength);
       break;
+    case 'augment':
+      p.getWeapon(choice.weapon)?.addAugment(choice.augment, strength);
+      break;
     case 'socket':
       p.attachTrinket(choice.id, choice.trinket);
       break;
@@ -235,6 +241,26 @@ function weaponOption(id, level, weight, isNew = false) {
     color: def.color,
     tag: isNew ? `New weapon${level > 1 ? ` · Lv ${level}` : ''}` : `Weapon · Lv ${level}`,
     text: isNew ? `${def.description} Brings the talents you've taken in its tree.` : def.levels[level - 1].text,
+  };
+}
+
+/** An augment card for weapon `w`: the card names it, and shows the augment's rarity. */
+function augmentOption(w, aug) {
+  const rarity = RARITIES[aug.rarity];
+  return {
+    kind: 'augment',
+    id: `${w.id}:${aug.key}`,
+    weapon: w.id,
+    augment: aug,
+    rarity: aug.rarity,
+    sprite: { kind: 'passive', id: aug.icon },
+    weight: aug.weight,
+    name: aug.name,
+    icon: aug.name.slice(0, 2),
+    color: rarity.color,
+    tag: `${rarity.name} augment`,
+    text: aug.text,
+    on: { id: w.id, name: w.def.name, icon: w.def.icon, color: w.def.color },
   };
 }
 

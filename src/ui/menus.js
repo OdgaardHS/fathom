@@ -1,5 +1,4 @@
 import { CONFIG } from '../config.js';
-import { TAG_LABELS } from '../data/talents.js';
 import { itemIconURL } from '../render/icons.js';
 import { drawDiver } from '../render/sprites.js';
 import { formatTime } from './format.js';
@@ -9,8 +8,8 @@ const SHALLOW = [40, 140, 150];
 const DEEP = [6, 16, 22];
 
 /**
- * HTML overlay screens (title, characters, weapons, depths, level-up, pause, game over, cleared)
- * defined in index.html. The in-run HUD is drawn on the canvas instead (see hud.js).
+ * HTML overlay screens (title, loadout, depths, level-up, pause, game over, cleared) defined in
+ * index.html. The in-run HUD is drawn on the canvas instead (see hud.js).
  */
 export class Menus {
   /** `actions` maps each button's data-action to a callback, which receives its data-value. */
@@ -31,7 +30,7 @@ export class Menus {
       actions[button.dataset.action]?.(button.dataset.value);
     });
     this.setupTrinketDrag();
-    this.setupTalentTree();
+    this.setupLoadout();
   }
 
   /** Labels on the Music / Sounds buttons (pause screen). */
@@ -54,78 +53,90 @@ export class Menus {
     this.show('title');
   }
 
-  showHeroes(heroes, selectedId) {
-    const cards = heroes.map((hero, i) => {
-      if (hero.locked) {
-        // A secret diver: just a dark shape. No name, no hint.
-        const card = el('button', 'hero-card locked-hero');
-        card.type = 'button';
-        card.disabled = true;
-        const top = el('span', 'hero-top');
-        const names = el('span', 'hero-names');
-        names.append(el('span', 'hero-name', '???'), el('span', 'hero-role', 'Locked'));
-        top.append(porthole(portrait(hero, { silhouette: true }), 'hero-port'), names);
-        card.append(top);
-        return card;
-      }
-      const card = el('button', `hero-card${hero.id === selectedId ? ' selected' : ''}`);
-      card.type = 'button';
-      card.dataset.action = 'hero';
-      card.dataset.value = hero.id;
-      card.style.setProperty('--accent', hero.accent);
-      hangKelp(card, i, [1, 4]);
-      texOffset(card, i);
+  // ------------------------------------------------ the loadout (between dives)
 
-      const top = el('span', 'hero-top');
-      const names = el('span', 'hero-names');
-      names.append(el('span', 'hero-name', hero.name), el('span', 'hero-role', hero.role));
-      top.append(porthole(portrait(hero), 'hero-port'), names, el('kbd', 'hero-key', String(i + 1)));
-
-      // their words on a dark bronze plaque, so they read easily on the copper
-      const plaque = el('span', 'plaque hero-plaque');
-      plaque.append(el('span', 'hero-blurb', hero.blurb), detail(`Passive · ${hero.trait.name}`, hero.trait.text));
-      // Only what makes this diver different: no item icons, no talent counts.
-      if (hero.statsText) plaque.append(el('span', 'hero-foot', hero.statsText));
-      card.append(top, plaque);
-      return card;
-    });
-    this.screens.heroes.querySelector('[data-heroes]').replaceChildren(...cards);
-    this.show('heroes');
+  /**
+   * The loadout: the diver and the weapon you'll dive with, side by side. Each column has a row of
+   * portholes to swap it, its name, level and points, and its talent tree (click a talent to learn
+   * it, right-click to take a point back). Pointing at a talent, a porthole or the name shows what
+   * it does on a bronze plaque beside it.
+   */
+  showLoadout(view) {
+    this.loadout = view;
+    this.show('loadout'); // first, so the trees can measure how much room they have
+    const columns = this.screens.loadout.querySelectorAll('[data-col]');
+    view.columns.forEach((col, i) => renderLoadoutColumn(columns[i], col, view.debug));
+    // each tree fits its box, and fits again whenever the box changes size (the window, or the
+    // portholes above it finishing loading)
+    this.treeObserver ??= new ResizeObserver((entries) => entries.forEach((e) => fitTree(e.target)));
+    this.treeObserver.disconnect();
+    for (const tree of this.screens.loadout.querySelectorAll('.lo-tree')) this.treeObserver.observe(tree);
+    // a click redraws the screen: keep showing what the pointer is on
+    this.describe(this.loadoutHover);
   }
 
-  showWeapons(weapons, selectedId) {
-    const cards = weapons.map((w, i) => {
-      const card = el('button', `hero-card weapon-card${w.id === selectedId ? ' selected' : ''}`);
-      card.type = 'button';
-      card.dataset.action = 'weapon';
-      card.dataset.value = w.id;
-      card.disabled = !w.unlocked;
-      card.style.setProperty('--accent', w.color);
-      hangKelp(card, i, [2, 7, 10]);
-      texOffset(card, i);
-
-      const top = el('span', 'hero-top');
-      const names = el('span', 'hero-names');
-      const role = w.unlocked ? (w.foundFrom ? 'Weapon · found deep' : 'Weapon') : 'Locked';
-      names.append(el('span', 'hero-name', w.name), el('span', 'hero-role', role));
-      top.append(itemIcon('card-icon weapon-icon', { kind: 'weapon', id: w.id }, w.icon), names);
-      if (i < 9) top.append(el('kbd', 'hero-key', String(i + 1))); // number keys go up to 9
-
-      const plaque = el('span', 'plaque hero-plaque');
-      plaque.append(el('span', 'hero-blurb', w.unlocked ? w.description : (w.foundText ?? 'Find it on a dive to unlock it.')));
-      if (w.unlocked && w.passiveText) plaque.append(detail('Built in', w.passiveText));
-      if (w.unlocked) plaque.append(el('span', 'hero-foot', `${w.talents.length} talents · leans on ${w.tags.map((t) => TAG_LABELS[t]).join(', ')}`));
-      card.append(top, plaque);
-      return card;
-    });
-    this.screens.weapons.querySelector('[data-weapons]').replaceChildren(...cards);
-    this.show('weapons');
+  /**
+   * The plaque that follows the pointer: `hover` is { kind, type: 'talent' | 'pick' | 'about', key,
+   * option, id }, or null to hide it.
+   */
+  describe(hover) {
+    const tip = this.loadoutTip;
+    if (!tip) return;
+    const col = hover && this.loadout?.columns.find((c) => c.kind === hover.kind);
+    const anchor = col && this.screens.loadout.querySelector(anchorSelector(hover));
+    let parts = null;
+    if (anchor && hover.type === 'talent') parts = talentInfo(col.tree, hover);
+    else if (anchor && hover.type === 'pick') {
+      const pick = col.picks.find((p) => p.id === hover.id);
+      if (pick) parts = pick.about ? aboutParts(pick.about, true) : [el('span', 'hero-blurb', 'Locked.')];
+    } else if (anchor && hover.type === 'about') parts = aboutParts(col.about, false);
+    if (!parts) {
+      tip.hidden = true;
+      return;
+    }
+    tip.replaceChildren(...parts);
+    tip.hidden = false;
+    placeTip(tip, anchor.getBoundingClientRect());
   }
 
-  showDepths(entries, hero, weapon, unspent = 0) {
+  /** Clicks are handled like every other button (data-action); this adds the plaque and right-click refunds. */
+  setupLoadout() {
+    this.loadoutHover = null;
+    const screen = this.screens.loadout;
+    if (!screen) return;
+    this.loadoutTip = el('div', 'plaque lo-tip');
+    this.loadoutTip.hidden = true;
+    screen.append(this.loadoutTip);
+    screen.addEventListener('pointerover', (e) => {
+      const column = e.target.closest('[data-col]');
+      const kind = column?.dataset.col;
+      const node = e.target.closest('[data-key]');
+      const pick = e.target.closest('[data-pick]');
+      const about = e.target.closest('[data-about]');
+      let hover = null;
+      if (kind && node) hover = { kind, type: 'talent', key: node.dataset.key, option: node.dataset.option };
+      else if (kind && pick) hover = { kind, type: 'pick', id: pick.dataset.pick };
+      else if (kind && about) hover = { kind, type: 'about' };
+      const was = this.loadoutHover;
+      if (was?.kind === hover?.kind && was?.type === hover?.type && was?.key === hover?.key && was?.option === hover?.option && was?.id === hover?.id) return;
+      this.loadoutHover = hover;
+      this.describe(hover);
+    });
+    screen.addEventListener('pointerleave', () => {
+      this.loadoutHover = null;
+      this.describe(null);
+    });
+    screen.addEventListener('contextmenu', (e) => {
+      const node = e.target.closest('[data-key]');
+      if (!node) return;
+      e.preventDefault();
+      this.actions.talentRefund?.(node.dataset.value.split('#')[0]);
+    });
+  }
+
+  showDepths(entries, hero, weapon) {
     const diver = this.screens.depths.querySelector('[data-diver]');
     diver.replaceChildren('Diving as ', el('b', null, hero.name), ' with ', el('b', null, weapon.name));
-    setTalentsButton(this.screens.depths, unspent);
 
     const rows = entries.map((d, i) => {
       const row = el('li', `depth depth-${d.status}`);
@@ -191,6 +202,7 @@ export class Menus {
       card.dataset.action = 'pick';
       card.dataset.value = String(i);
       card.style.setProperty('--accent', choice.color);
+      if (choice.rarity) card.dataset.rarity = choice.rarity; // augments: their rarity shows
       // Once a trinket is picked, the number keys choose a weapon instead, so the cards hide theirs.
       if (!(trinkets && selected !== null)) card.append(el('kbd', 'card-key', String(i + 1)));
       if (trinkets) {
@@ -207,6 +219,7 @@ export class Menus {
       // what it is and what it does, on a dark bronze plaque
       const plaque = el('span', 'plaque card-plaque');
       plaque.append(el('span', 'card-tag', choice.tag));
+      if (choice.on) plaque.append(onWeapon(choice.on)); // an augment names its weapon
       if (choice.text) plaque.append(el('span', 'card-text', choice.text));
       for (const [label, text] of choice.details ?? []) {
         const line = el('span', 'card-detail');
@@ -469,78 +482,6 @@ export class Menus {
     this.show('cleared');
   }
 
-  // ------------------------------------------------ talent trees (between dives)
-
-  /** The talent screen: tabs for every diver and weapon, the open tree, and what a hovered talent does. */
-  showTalents(view) {
-    const screen = this.screens.talents;
-    this.talentView = view;
-    screen.querySelector('[data-talent-debug]').hidden = !view.debug;
-    this.show('talents'); // first, so the tree can measure how much room it has
-    renderTalentTabs(screen.querySelector('[data-talent-tabs]'), view.tabs);
-    renderTalentHead(screen.querySelector('[data-talent-head]'), view.head);
-    renderTree(screen.querySelector('[data-talent-tree]'), view);
-    this.describeTalent(this.talentHover ?? null); // keep describing what the pointer is on after a click
-  }
-
-  /** The panel under the tree: the hovered talent (`target` = { key, option }), or a summary. */
-  describeTalent(target) {
-    const box = this.screens.talents.querySelector('[data-talent-info]');
-    const view = this.talentView;
-    const node = target && view.nodes.find((n) => n.key === target.key);
-    if (!node) {
-      const h = view.head;
-      const text = h.free > 0
-        ? `${h.free} point${h.free > 1 ? 's' : ''} to spend. Hover a talent to read it, click to learn it.`
-        : h.level >= h.maxLevel
-          ? 'Every point is spent at the top level. Swap choices or respec any time.'
-          : 'No points to spend right now. Dive to level up; hover a talent to read it.';
-      box.replaceChildren(el('p', 'talent-info-text', text));
-      return;
-    }
-    const option = node.options.find((o) => o.id === target.option) ?? node.options.find((o) => o.taken) ?? node.options[0];
-    const title = el('div', 'talent-info-title');
-    title.style.setProperty('--accent', option.color);
-    title.append(el('b', null, option.name));
-    const own = option.taken ? (node.choice ? 1 : node.rank) : 0;
-    title.append(el('span', 'talent-info-rank', node.choice ? (option.taken ? 'Chosen' : 'Choice') : `Rank ${own}/${option.ranks}`));
-    const parts = [title, el('p', 'talent-info-text', option.text)];
-    if (option.next) parts.push(el('p', 'talent-info-next', `Next rank: ${option.next}`));
-    if (node.choice) parts.push(el('p', 'talent-info-note', `A choice: take ${node.options.map((o) => o.name).join(' or ')}. You can swap between them any time.`));
-    if (option.tags.length) {
-      const tags = el('p', 'card-tags');
-      tags.append(el('em', null, 'Plays off'), ...option.tags.map((t) => el('span', null, t)));
-      parts.push(tags);
-    }
-    let note = null;
-    if (node.choice && node.rank > 0 && !option.taken) note = 'Click to swap to this one.';
-    else if (node.status === 'open' || node.status === 'partial') note = 'Click to learn it.';
-    else if (node.reason && node.status !== 'maxed') note = node.reason;
-    if (node.rank > 0) note = [note, node.refundReason ?? 'Right-click to take a point back.'].filter(Boolean).join(' ');
-    if (note) parts.push(el('p', 'talent-info-note', note));
-    box.replaceChildren(...parts);
-  }
-
-  /** Clicks are handled like every other button (data-action); this adds hover info and right-click refunds. */
-  setupTalentTree() {
-    const tree = this.screens.talents?.querySelector('[data-talent-tree]');
-    if (!tree) return;
-    tree.addEventListener('pointerover', (e) => {
-      const button = e.target.closest('[data-key]');
-      this.talentHover = button ? { key: button.dataset.key, option: button.dataset.option } : null;
-      this.describeTalent(this.talentHover);
-    });
-    tree.addEventListener('pointerleave', () => {
-      this.talentHover = null;
-      this.describeTalent(null);
-    });
-    tree.addEventListener('contextmenu', (e) => {
-      const button = e.target.closest('[data-key]');
-      if (!button) return;
-      e.preventDefault();
-      this.actions.talentRefund?.(button.dataset.key);
-    });
-  }
 }
 
 // ------------------------------------------------ talent tree drawing
@@ -549,44 +490,110 @@ const COL_W = 96; // a tree is 5 columns...
 const ROW_H = 92; // ...and up to 6 rows
 const NODE = 54;
 
-function renderTalentTabs(nav, tabs) {
-  const group = (title, list) => {
-    const box = el('div', 'talent-tab-group');
-    box.append(el('p', 'talent-tab-title', title));
-    for (const t of list) {
-      const b = el('button', `talent-tab${t.active ? ' active' : ''}${t.locked ? ' locked' : ''}`);
-      b.type = 'button';
-      b.dataset.action = 'talentTab';
-      b.dataset.value = `${t.kind}:${t.id}`;
-      b.title = `${t.name} · ${t.locked ? 'not found yet' : `level ${t.level}`}`;
-      if (t.color) b.style.setProperty('--accent', t.color);
-      const pic = t.hero ? portrait(t.hero) : itemIcon('tab-icon', { kind: 'weapon', id: t.id }, t.icon);
-      pic.classList.add('tab-pic');
-      const names = el('span', 'tab-names');
-      names.append(el('span', 'tab-name', t.name), el('span', 'tab-level', t.locked ? 'Not found yet' : `Level ${t.level}`));
-      b.append(pic, names);
-      if (t.free > 0) b.append(el('span', 'tab-points', String(t.free)));
-      box.append(b);
-    }
-    return box;
-  };
-  nav.replaceChildren(group('Divers', tabs.filter((t) => t.kind === 'character')), group('Weapons', tabs.filter((t) => t.kind === 'weapon')));
-}
+/** One column of the loadout: the portholes to swap it, then its plate (name, level, tree, plaque). */
+function renderLoadoutColumn(box, col, debug) {
+  const picks = el('div', 'lo-picks');
+  for (const p of col.picks) {
+    const b = el('button', `lo-pick${p.active ? ' active' : ''}${p.locked ? ' locked' : ''}`);
+    b.type = 'button';
+    b.dataset.action = 'equip';
+    b.dataset.value = `${col.kind}:${p.id}`;
+    b.dataset.pick = p.id;
+    b.disabled = p.locked;
+    b.title = p.name;
+    b.style.setProperty('--accent', p.accent);
+    b.append(col.kind === 'character' ? porthole(portrait(p.hero, { silhouette: p.locked }), 'lo-port') : itemIcon('card-icon lo-port', { kind: 'weapon', id: p.id }, p.icon));
+    if (p.free > 0) b.append(el('span', 'tab-points', String(p.free))); // points waiting in its tree
+    picks.append(b);
+  }
 
-function renderTalentHead(box, h) {
-  const left = el('div', 'talent-head-name');
-  left.append(el('b', null, h.name), el('span', null, h.role));
-  const right = el('div', 'talent-head-level');
+  const { tree: treeId, head: h } = col.tree;
+  const names = el('div', 'lo-names');
+  names.dataset.about = ''; // pointing at the name says what it is
+  names.append(el('span', 'hero-name', col.about.name), el('span', 'hero-role', col.about.role));
+  // level, XP and points on a small dark plaque
+  const stats = el('div', 'lo-stats');
+  const level = el('div', 'lo-level');
   const maxed = h.level >= h.maxLevel;
-  right.append(el('span', 'talent-level', `Level ${h.level} / ${h.maxLevel}`));
   const bar = el('span', 'xp-bar');
   const fill = el('span', 'xp-fill');
   fill.style.width = `${maxed ? 100 : Math.round((h.into / Math.max(1, h.need)) * 100)}%`;
   bar.append(fill);
-  right.append(bar, el('span', 'talent-xp', maxed ? 'Top level' : `${Math.floor(h.into)} / ${h.need} XP to the next point`));
+  level.append(el('span', 'talent-level', `Level ${h.level} / ${h.maxLevel}`), bar, el('span', 'talent-xp', maxed ? 'Top level' : `${Math.floor(h.into)} / ${h.need} XP`));
   const points = el('div', `talent-points${h.free > 0 ? ' has-free' : ''}`);
-  points.append(el('b', null, String(h.free)), el('span', null, h.free === 1 ? 'point to spend' : 'points to spend'), el('small', null, `${h.spent} of ${h.maxPoints} spent`));
-  box.replaceChildren(left, right, points);
+  points.append(el('b', null, String(h.free)), el('span', null, h.free === 1 ? 'point' : 'points'));
+  stats.append(level, points);
+  const tools = el('div', 'lo-tools');
+  const reset = button('btn small', 'Reset', 'talentReset', treeId);
+  reset.title = 'Take back every point in this tree (respec is free)';
+  tools.append(reset);
+  if (debug) tools.append(button('btn small', '+1 level', 'talentLevel', treeId));
+  const head = el('div', 'lo-head');
+  head.append(names, stats, tools);
+
+  const tree = el('div', 'talent-tree lo-tree');
+  const plate = el('div', 'lo-plate');
+  plate.append(head, tree);
+  box.replaceChildren(picks, plate);
+  renderTree(tree, col.tree);
+}
+
+/** Where the loadout's plaque points: the hovered talent, porthole or name (see Menus.describe). */
+function anchorSelector(hover) {
+  const col = `[data-col="${hover.kind}"]`;
+  if (hover.type === 'talent') return `${col} [data-key="${hover.key}"][data-option="${hover.option}"]`;
+  if (hover.type === 'pick') return `${col} [data-pick="${hover.id}"]`;
+  return `${col} [data-about]`;
+}
+
+/** Put the plaque beside `rect` (right of it if there's room, else left), inside the window. */
+function placeTip(tip, rect) {
+  const gap = 12;
+  const w = tip.offsetWidth;
+  const h = tip.offsetHeight;
+  let x = rect.right + gap;
+  if (x + w > window.innerWidth - 8) x = rect.left - gap - w;
+  x = Math.max(8, Math.min(x, window.innerWidth - w - 8));
+  const y = Math.max(8, Math.min(rect.top, window.innerHeight - h - 8));
+  tip.style.left = `${Math.round(x)}px`;
+  tip.style.top = `${Math.round(y)}px`;
+}
+
+/** What a diver or weapon is, for a loadout plaque (with its name, when it isn't the equipped one). */
+function aboutParts(about, withName) {
+  const parts = [];
+  if (withName) parts.push(el('b', 'lo-tip-name', about.name));
+  parts.push(el('span', 'hero-blurb', about.blurb));
+  if (about.detail) parts.push(detail(...about.detail));
+  if (about.foot) parts.push(el('span', 'hero-foot', about.foot));
+  return parts;
+}
+
+/** What a hovered talent does, for a loadout plaque: `target` is { key, option } in `tree`. */
+function talentInfo(tree, target) {
+  const node = tree.nodes.find((n) => n.key === target.key);
+  if (!node) return null;
+  const option = node.options.find((o) => o.id === target.option) ?? node.options.find((o) => o.taken) ?? node.options[0];
+  const title = el('div', 'talent-info-title');
+  title.style.setProperty('--accent', option.color);
+  title.append(el('b', null, option.name));
+  const own = option.taken ? (node.choice ? 1 : node.rank) : 0;
+  title.append(el('span', 'talent-info-rank', node.choice ? (option.taken ? 'Chosen' : 'Choice') : `Rank ${own}/${option.ranks}`));
+  const parts = [title, el('p', 'talent-info-text', option.text)];
+  if (option.next) parts.push(el('p', 'talent-info-next', `Next rank: ${option.next}`));
+  if (node.choice) parts.push(el('p', 'talent-info-note', `A choice: take ${node.options.map((o) => o.name).join(' or ')}. You can swap between them any time.`));
+  if (option.tags.length) {
+    const tags = el('p', 'card-tags');
+    tags.append(el('em', null, 'Plays off'), ...option.tags.map((t) => el('span', null, t)));
+    parts.push(tags);
+  }
+  let note = null;
+  if (node.choice && node.rank > 0 && !option.taken) note = 'Click to swap to this one.';
+  else if (node.status === 'open' || node.status === 'partial') note = tree.head.free > 0 ? 'Click to learn it.' : 'No points to spend: dive to level up.';
+  else if (node.reason && node.status !== 'maxed') note = node.reason;
+  if (node.rank > 0) note = [note, node.refundReason ?? 'Right-click to take a point back.'].filter(Boolean).join(' ');
+  if (note) parts.push(el('p', 'talent-info-note', note));
+  return parts;
 }
 
 /** Nodes on a grid, lines between connected nodes, and dashed gates across the gated rows. */
@@ -650,13 +657,13 @@ function renderTree(box, view) {
       wrap.style.left = `${c.x}px`;
       wrap.style.top = `${c.y}px`;
       for (const o of n.options) {
-        const b = talentButton(n, o, o.taken ? 'taken' : n.rank > 0 ? 'other' : '');
+        const b = talentButton(view.tree, n, o, o.taken ? 'taken' : n.rank > 0 ? 'other' : '');
         wrap.append(b);
       }
       canvas.append(wrap);
     } else {
       const o = n.options[0];
-      const b = talentButton(n, o, '');
+      const b = talentButton(view.tree, n, o, '');
       b.classList.add('talent-single', `status-${n.status}`);
       b.style.left = `${c.x}px`;
       b.style.top = `${c.y}px`;
@@ -664,27 +671,34 @@ function renderTree(box, view) {
       canvas.append(b);
     }
   }
-  // On narrow screens, shrink the whole tree to fit instead of cutting it off.
-  const room = box.clientWidth - 12;
-  if (room > 0 && room < width) {
-    const scale = room / width;
-    const holder = el('div', 'tree-fit');
-    holder.style.width = `${width * scale}px`;
-    holder.style.height = `${height * scale}px`;
-    canvas.style.transform = `scale(${scale})`;
-    canvas.style.transformOrigin = 'top left';
-    holder.append(canvas);
-    box.replaceChildren(holder);
-  } else {
-    box.replaceChildren(canvas);
-  }
+  const holder = el('div', 'tree-fit');
+  holder.append(canvas);
+  box.replaceChildren(holder);
+  fitTree(box);
 }
 
-function talentButton(node, option, extra) {
+/** Shrink a drawn tree to fit its box, never past its full size (the loadout fits two trees on one screen). */
+function fitTree(box) {
+  const holder = box.querySelector('.tree-fit');
+  const canvas = holder?.firstElementChild;
+  if (!canvas) return;
+  const width = parseFloat(canvas.style.width);
+  const height = parseFloat(canvas.style.height);
+  const roomW = box.clientWidth - 16;
+  const roomH = box.clientHeight - 16;
+  const scale = Math.min(1, roomW > 0 ? roomW / width : 1, roomH > 0 ? roomH / height : 1);
+  holder.style.width = `${width * scale}px`;
+  holder.style.height = `${height * scale}px`;
+  canvas.style.transform = `scale(${scale})`;
+  canvas.style.transformOrigin = 'top left';
+}
+
+/** A talent in tree `tree` ('character:otto'): its value is 'character:otto|key#option'. */
+function talentButton(tree, node, option, extra) {
   const b = el('button', `talent-node tier-${option.tier} ${extra}`.trim());
   b.type = 'button';
   b.dataset.action = 'talentBuy';
-  b.dataset.value = `${node.key}#${node.choice ? option.id : ''}`;
+  b.dataset.value = `${tree}|${node.key}#${node.choice ? option.id : ''}`;
   b.dataset.key = node.key;
   b.dataset.option = option.id;
   b.style.setProperty('--accent', option.color);
@@ -693,11 +707,11 @@ function talentButton(node, option, extra) {
   return b;
 }
 
-/** "Talents" button: shows how many points are waiting. */
+/** "Loadout" button (after a dive): shows how many talent points are waiting there. */
 function setTalentsButton(screen, unspent) {
   const b = screen.querySelector('[data-talents-button]');
   if (!b) return;
-  b.textContent = unspent > 0 ? `Talents (${unspent} to spend)` : 'Talents';
+  b.textContent = unspent > 0 ? `Loadout (${unspent} to spend)` : 'Loadout';
   b.classList.toggle('primary-soft', unspent > 0);
 }
 
@@ -769,6 +783,15 @@ function portrait(hero, { size = 64, silhouette = false } = {}) {
   return canvas;
 }
 
+/** "On your [icon] Harpoon": the weapon an augment card is for. */
+function onWeapon(w) {
+  const row = el('span', 'card-on');
+  const chip = itemIcon('affect-chip', { kind: 'weapon', id: w.id }, w.icon);
+  chip.style.setProperty('--accent', w.color);
+  row.append(el('em', null, 'On your'), chip, el('b', null, w.name));
+  return row;
+}
+
 /** The weapons a stat bonus affects, as small icons. Hovering one says what it does for that weapon. */
 function affectsRow(weapons) {
   const row = el('span', 'card-affects');
@@ -820,6 +843,14 @@ function hangKelp(node, n, which, corner = 'kelp-a') {
   if (!which.includes(n)) return;
   node.classList.add(corner);
   node.style.setProperty('--kelp-pick', `var(--kelp-${(n % 3) + 1})`);
+}
+
+function button(className, text, action, value) {
+  const b = el('button', className, text);
+  b.type = 'button';
+  b.dataset.action = action;
+  b.dataset.value = value;
+  return b;
 }
 
 function detail(title, text) {

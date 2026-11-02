@@ -99,7 +99,12 @@ export class Drone {
     return RANGE * game.player.stats.area * (this.charges ? 1.25 : 1);
   }
 
+  /** Each tick, with the launcher's augments (Weapon.withBoost). */
   update(dt, game) {
+    this.weapon.withBoost(game, () => this.step(dt, game));
+  }
+
+  step(dt, game) {
     this.px = this.x;
     this.py = this.y;
     const p = game.player;
@@ -318,6 +323,10 @@ export class Drone {
   }
 
   draw(ctx, game) {
+    this.weapon.withBoost(game, () => this.drawBody(ctx, game));
+  }
+
+  drawBody(ctx, game) {
     // Hover gently in place
     const bob = Math.sin(game.time * 2.2 + this.bob) * 1.5;
     this.ry += bob;

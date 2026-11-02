@@ -42,7 +42,7 @@ function polygon(ctx, points) {
   ctx.closePath();
 }
 
-/** A simple side-view fish facing right (Duplicator, Pilot Fish). */
+/** A simple side-view fish facing right (the Plus One augment, Pilot Fish). */
 function fish(ctx, x, y, s, body, stripes = null) {
   ctx.save();
   ctx.translate(x, y);

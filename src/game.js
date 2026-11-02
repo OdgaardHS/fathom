@@ -87,6 +87,20 @@ const NUMBER_KEYS = [
  *                                   ├── gameover ◀─┤ player dies   (retry ─▶ playing)
  *                                   └── cleared ◀──┘ final boss dies
  */
+/** "Lv 3 · 4 augments" for a weapon's tag in the run summary (just the level without any). */
+function augmentNote(w) {
+  const n = w.augments.length;
+  return n ? `Lv ${w.level} · ${n} augment${n > 1 ? 's' : ''}` : undefined;
+}
+
+/** A loadout talent value 'weapon:harpoon|key#option' (or just 'weapon:harpoon') as its parts. */
+function talentTarget(value) {
+  const [tree, node = ''] = String(value).split('|');
+  const [kind, id] = tree.split(':');
+  const [key, option] = node.split('#');
+  return { kind, id, key, option };
+}
+
 export class Game {
   constructor({ screen, input, uiRoot }) {
     this.screen = screen;
@@ -113,14 +127,17 @@ export class Game {
     this.resetWorld();
 
     this.menus = new Menus(uiRoot, {
-      start: () => this.state === 'title' && this.setState('heroes'),
+      start: () => this.state === 'title' && this.setState('loadout'),
       back: () => {
-        if (this.state === 'heroes') this.setState('title');
-        else if (this.state === 'weapons') this.setState('heroes');
-        else if (this.state === 'depths') this.setState('weapons');
+        if (this.state === 'loadout') this.setState('title');
+        else if (this.state === 'depths') this.setState('loadout');
       },
-      hero: (id) => this.state === 'heroes' && this.chooseHero(id),
-      weapon: (id) => this.state === 'weapons' && this.chooseWeapon(id),
+      // the loadout: swap diver or weapon (value 'character:otto' / 'weapon:harpoon'), then on to the depths
+      equip: (value) => {
+        const [kind, id] = String(value).split(':');
+        this.loadoutAction(() => (kind === 'character' ? this.chooseHero(id) : this.chooseWeapon(id)), 'select');
+      },
+      chooseDepth: () => this.state === 'loadout' && this.setState('depths'),
       dive: (id) => this.state === 'depths' && this.startRun(id),
       restart: () => this.state === 'gameover' && this.startRun(this.level.id),
       depths: () => this.toDepths(),
@@ -133,19 +150,24 @@ export class Game {
       },
       reroll: () => this.reroll(),
       feed: (value) => this.feed(String(value)),
-      talents: () => this.openTalents(),
-      talentsDone: () => this.closeTalents(),
-      talentTab: (value) => this.talentsAction(() => {
-        const [kind, id] = String(value).split(':');
-        this.talentTab = { kind, id };
-      }),
+      loadout: () => this.openLoadout(),
+      // The loadout's two talent trees. A talent's value names its tree and node: 'weapon:harpoon|key#option'.
       talentBuy: (value) => {
-        const [key, option] = String(value).split('#');
-        this.talentsAction(() => buy(this.progress, this.talentTab.kind, this.talentTab.id, key, option || null), 'select');
+        const { kind, id, key, option } = talentTarget(value);
+        this.loadoutAction(() => buy(this.progress, kind, id, key, option || null), 'select');
       },
-      talentRefund: (key) => this.talentsAction(() => refund(this.progress, this.talentTab.kind, this.talentTab.id, key), 'pearl'),
-      talentReset: () => this.talentsAction(() => resetTree(this.progress, this.talentTab.kind, this.talentTab.id)),
-      talentLevel: () => this.talentsAction(() => this.debugLevelUp()),
+      talentRefund: (value) => {
+        const { kind, id, key } = talentTarget(value);
+        this.loadoutAction(() => refund(this.progress, kind, id, key), 'pearl');
+      },
+      talentReset: (tree) => {
+        const { kind, id } = talentTarget(tree);
+        this.loadoutAction(() => resetTree(this.progress, kind, id));
+      },
+      talentLevel: (tree) => {
+        const { kind, id } = talentTarget(tree);
+        this.loadoutAction(() => this.debugLevelUp(kind, id));
+      },
       toggleMusic: () => this.toggleAudio('music'),
       toggleSfx: () => this.toggleAudio('sfx'),
     });
@@ -191,18 +213,20 @@ export class Game {
     this.effects.clear();
   }
 
+  /** Dive as this diver (on the loadout). False if it's locked or unknown. */
   chooseHero(id) {
-    if (!HEROES[id] || !this.isHeroUnlocked(id)) return;
+    if (!HEROES[id] || !this.isHeroUnlocked(id)) return false;
     this.heroId = id;
     saveHeroChoice(id);
-    this.setState('weapons');
+    return true;
   }
 
+  /** Start dives with this weapon (on the loadout). False if it's locked or unknown. */
   chooseWeapon(id) {
-    if (!WEAPONS[id] || !this.isWeaponUnlocked(id)) return;
+    if (!WEAPONS[id] || !this.isWeaponUnlocked(id)) return false;
     this.weaponId = id;
     saveWeaponChoice(id);
-    this.setState('depths');
+    return true;
   }
 
   /** Secret divers (the Hollow Diver) only show up once unlocked. Debug mode (F3) unlocks them. */
@@ -236,10 +260,6 @@ export class Game {
     this.progress.unlockedWeapons.push(id);
     saveProgress(this.progress);
     this.announce(`${WEAPONS[id].name} found! You can now start dives with it.`, 3);
-  }
-
-  weaponEntries() {
-    return Object.entries(WEAPONS).map(([id, def]) => ({ id, ...def, unlocked: this.isWeaponUnlocked(id) }));
   }
 
   startRun(levelId) {
@@ -279,17 +299,11 @@ export class Game {
       case 'title':
         this.menus.showTitle();
         break;
-      case 'heroes':
-        this.menus.showHeroes(
-          HERO_ORDER.map((id) => ({ id, ...HEROES[id], locked: !this.isHeroUnlocked(id) })),
-          this.heroId,
-        );
-        break;
-      case 'weapons':
-        this.menus.showWeapons(this.weaponEntries(), this.weaponId);
+      case 'loadout':
+        this.menus.showLoadout(this.loadoutView());
         break;
       case 'depths':
-        this.menus.showDepths(this.depthEntries(), HEROES[this.heroId], WEAPONS[this.weaponId], this.unspentPoints());
+        this.menus.showDepths(this.depthEntries(), HEROES[this.heroId], WEAPONS[this.weaponId]);
         break;
       case 'playing':
         this.menus.hide();
@@ -302,9 +316,6 @@ export class Game {
         break;
       case 'cleared':
         this.menus.showCleared(this.runSummary(), this.nextDepthText());
-        break;
-      case 'talents':
-        this.menus.showTalents(this.talentView());
         break;
     }
   }
@@ -370,7 +381,7 @@ export class Game {
   }
 
   nextDepthText() {
-    const secret = this.unlockedHero ? ` Something hollow followed you up: ${HEROES[this.unlockedHero].name} waits on the diver select.` : '';
+    const secret = this.unlockedHero ? ` Something hollow followed you up: ${HEROES[this.unlockedHero].name} waits in the loadout.` : '';
     return this.depthText() + secret;
   }
 
@@ -392,32 +403,21 @@ export class Game {
     }
     if (input.wasPressed('F3', 'Backquote')) {
       this.debug = !this.debug;
-      // refresh which depths and weapons are open
-      if (this.state === 'depths' || this.state === 'weapons' || this.state === 'heroes') this.setState(this.state);
+      // refresh which depths, divers and weapons are open
+      if (this.state === 'depths' || this.state === 'loadout') this.setState(this.state);
     }
     const numberPressed = () => NUMBER_KEYS.findIndex((keys) => input.wasPressed(...keys));
 
     switch (this.state) {
       case 'title':
-        if (input.wasPressed('Enter', 'Space')) this.setState('heroes');
+        if (input.wasPressed('Enter', 'Space')) this.setState('loadout');
         break;
-      case 'heroes': {
-        const i = numberPressed();
+      case 'loadout':
         if (input.wasPressed('Escape')) this.setState('title');
-        else if (i !== -1 && HERO_ORDER[i]) this.chooseHero(HERO_ORDER[i]); // locked divers are ignored
-        else if (input.wasPressed('Enter')) this.chooseHero(this.heroId);
+        else if (input.wasPressed('Enter')) this.setState('depths');
         break;
-      }
-      case 'weapons': {
-        const i = numberPressed();
-        const ids = Object.keys(WEAPONS);
-        if (input.wasPressed('Escape')) this.setState('heroes');
-        else if (i !== -1 && ids[i]) this.chooseWeapon(ids[i]);
-        else if (input.wasPressed('Enter')) this.chooseWeapon(this.weaponId);
-        break;
-      }
       case 'depths':
-        if (input.wasPressed('Escape')) this.setState('weapons');
+        if (input.wasPressed('Escape')) this.setState('loadout');
         else if (input.wasPressed('Enter')) {
           const id = this.defaultDive();
           if (id) this.startRun(id);
@@ -445,13 +445,11 @@ export class Game {
       }
       case 'gameover':
         if (input.wasPressed('KeyR', 'Enter')) this.startRun(this.level.id);
-        else if (input.wasPressed('KeyT')) this.openTalents();
-        break;
-      case 'talents':
-        if (input.wasPressed('Escape', 'Enter')) this.closeTalents();
+        else if (input.wasPressed('KeyL', 'KeyT')) this.openLoadout();
         break;
       case 'cleared':
         if (input.wasPressed('Enter', 'Space')) this.toDepths();
+        else if (input.wasPressed('KeyL', 'KeyT')) this.openLoadout();
         break;
     }
   }
@@ -1419,7 +1417,7 @@ export class Game {
   takeCard(choice, strength) {
     applyUpgrade(choice, this, strength);
     if (choice.kind === 'weapon' && choice.isNew) this.onWeaponFound(choice.id);
-    if (choice.kind === 'weapon' || choice.kind === 'passive') this.player.counters.cardsTaken = (this.player.counters.cardsTaken ?? 0) + 1;
+    if (['weapon', 'passive', 'augment'].includes(choice.kind)) this.player.counters.cardsTaken = (this.player.counters.cardsTaken ?? 0) + 1;
   }
 
   /** Trinket screen: put trinket offer `trinketIndex` on the weapon in slot `weaponIndex`. */
@@ -1533,33 +1531,32 @@ export class Game {
     saveProgress(this.progress);
   }
 
-  // ---------------------------------------------------------------- talent trees
+  // ---------------------------------------------------------------- the loadout
 
-  /** Open the talent screen (from the depth, game-over or cleared screen), on this diver's tree. */
-  openTalents() {
+  /**
+   * Back to the loadout from the depth, game-over or cleared screen. What the dive earned is
+   * already banked (dying, clearing and abandoning all do that).
+   */
+  openLoadout() {
     if (!['depths', 'gameover', 'cleared'].includes(this.state)) return;
-    this.talentsReturn = this.state;
-    this.talentTab = { kind: 'character', id: this.heroId };
-    this.setState('talents');
+    this.bankDive();
+    this.player = null;
+    this.resetWorld();
+    this.setState('loadout');
   }
 
-  closeTalents() {
-    if (this.state === 'talents') this.setState(this.talentsReturn ?? 'depths');
-  }
-
-  /** Run a talent-screen change, save it, and redraw the screen. */
-  talentsAction(change, sound = null) {
-    if (this.state !== 'talents') return;
+  /** Run a loadout change (equip, learn, refund...), save it, and redraw the loadout. */
+  loadoutAction(change, sound = null) {
+    if (this.state !== 'loadout') return;
     if (change() === false) return;
     saveProgress(this.progress);
     if (sound) this.audio.play(sound);
-    this.menus.showTalents(this.talentView());
+    this.menus.showLoadout(this.loadoutView());
   }
 
-  /** Debug mode (F3): one more level for the tree on screen. */
-  debugLevelUp() {
+  /** Debug mode (F3): one more level for a tree. */
+  debugLevelUp(kind, id) {
     if (!this.debug) return false;
-    const { kind, id } = this.talentTab;
     const s = treeState(this.progress, kind, id);
     if (s.level >= s.maxLevel) return false;
     progressRecord(this.progress, kind, id).xp += s.need - s.into;
@@ -1573,14 +1570,57 @@ export class Game {
     return free;
   }
 
-  /** Everything the talent screen shows: the tabs, the open tree's nodes and its level. */
-  talentView() {
-    const { kind, id } = this.talentTab;
-    const state = treeState(this.progress, kind, id);
-    const tab = (k, tid, extra) => {
-      const s = treeState(this.progress, k, tid);
-      return { kind: k, id: tid, level: s.level, maxLevel: s.maxLevel, free: s.free, active: k === kind && tid === id, ...extra };
+  /**
+   * Everything the loadout shows: two columns, the diver's and the weapon's. Each has the
+   * portholes to swap it (with any points waiting on them), what the equipped one is, and its tree.
+   */
+  loadoutView() {
+    const free = (kind, id) => treeState(this.progress, kind, id).free;
+    const heroAbout = (h) => ({
+      name: h.name,
+      role: h.role,
+      blurb: h.blurb,
+      detail: [`Passive · ${h.trait.name}`, h.trait.text],
+      foot: h.statsText ?? null,
+    });
+    const weaponAbout = (w, locked) => ({
+      name: w.name,
+      role: w.foundFrom ? 'Weapon · found deep' : 'Weapon',
+      blurb: locked ? (w.foundText ?? 'Find it on a dive to unlock it.') : w.description,
+      detail: !locked && w.passiveText ? ['Built in', w.passiveText] : null,
+      foot: locked ? null : `${w.talents.length} talents · leans on ${w.tags.map((t) => TAG_LABELS[t]).join(', ')}`,
+    });
+    return {
+      debug: this.debug,
+      columns: [
+        {
+          kind: 'character',
+          label: 'Diver',
+          picks: HERO_ORDER.map((id) => {
+            const locked = !this.isHeroUnlocked(id);
+            // a secret diver is a dark shape: no name, no hint
+            return { id, hero: HEROES[id], name: locked ? '???' : HEROES[id].name, accent: HEROES[id].accent, locked, active: id === this.heroId, free: locked ? 0 : free('character', id), about: locked ? null : heroAbout(HEROES[id]) };
+          }),
+          about: heroAbout(HEROES[this.heroId]),
+          tree: this.treeView('character', this.heroId),
+        },
+        {
+          kind: 'weapon',
+          label: 'Weapon',
+          picks: Object.keys(WEAPONS).map((id) => {
+            const locked = !this.isWeaponUnlocked(id);
+            return { id, name: WEAPONS[id].name, icon: WEAPONS[id].icon, accent: WEAPONS[id].color, locked, active: id === this.weaponId, free: locked ? 0 : free('weapon', id), about: weaponAbout(WEAPONS[id], locked) };
+          }),
+          about: weaponAbout(WEAPONS[this.weaponId], false),
+          tree: this.treeView('weapon', this.weaponId),
+        },
+      ],
     };
+  }
+
+  /** One talent tree for the loadout: its level and points, its nodes and its gates. */
+  treeView(kind, id) {
+    const state = treeState(this.progress, kind, id);
     const nodes = state.tree.nodes.map((node) => {
       const key = nodeKey(node);
       const rank = nodeRank(node, state.alloc);
@@ -1614,21 +1654,9 @@ export class Game {
       points,
       met: nodes.filter((n) => n.row < Number(row)).reduce((sum, n) => sum + n.rank, 0) >= points,
     }));
-    const owner = kind === 'character' ? HEROES[id] : WEAPONS[id];
     return {
-      tabs: [
-        ...HERO_ORDER.filter((hid) => this.isHeroUnlocked(hid)).map((hid) => tab('character', hid, { name: HEROES[hid].name, hero: HEROES[hid] })),
-        ...Object.keys(WEAPONS).map((wid) => tab('weapon', wid, {
-          name: WEAPONS[wid].name,
-          icon: WEAPONS[wid].icon,
-          color: WEAPONS[wid].color,
-          locked: !this.isWeaponUnlocked(wid) && !(progressRecord(this.progress, 'weapon', wid).xp > 0),
-        })),
-      ],
+      tree: `${kind}:${id}`,
       head: {
-        kind,
-        name: owner.name,
-        role: kind === 'character' ? owner.role : 'Weapon mastery',
         level: state.level,
         maxLevel: state.maxLevel,
         into: state.into,
@@ -1640,7 +1668,6 @@ export class Game {
       },
       nodes,
       gates,
-      debug: this.debug,
     };
   }
 
@@ -1659,7 +1686,7 @@ export class Game {
       bestTime: record.bestTime,
       bestClear: record.bestClear,
       weapons: [
-        ...p.weapons.map((w) => ({ name: w.def.name, level: w.level, color: w.def.color, sprite: { kind: 'weapon', id: w.id } })),
+        ...p.weapons.map((w) => ({ name: w.def.name, level: w.level, color: w.def.color, sprite: { kind: 'weapon', id: w.id }, note: augmentNote(w) })),
         ...p.eaten.map((w) => ({ name: w.def.name, level: w.level, color: w.def.color, sprite: { kind: 'weapon', id: w.id }, note: 'Eaten' })),
       ],
       passives: [...p.passives].map(([id, level]) => ({
